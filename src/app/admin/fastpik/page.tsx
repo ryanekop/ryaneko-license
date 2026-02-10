@@ -375,14 +375,14 @@ export default function FastpikPage() {
                                                         setSelectedTier(user.tier === 'free' ? 'free' : user.tier);
                                                         setExpiryDate(user.expiresAt ? new Date(user.expiresAt).toISOString().split('T')[0] : new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]);
                                                     }}
-                                                    className="p-2 text-fg-muted cursor-pointer hover:text-accent hover:bg-bg-secondary rounded-lg transition-all active:scale-90"
+                                                    className="p-2 text-blue-500 cursor-pointer hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all active:scale-90"
                                                     title="Edit"
                                                 >
                                                     <EditIcon />
                                                 </button>
                                                 <button
                                                     onClick={() => setDeleteUser(user)}
-                                                    className="p-2 text-fg-muted cursor-pointer hover:text-danger hover:bg-danger/10 rounded-lg transition-all active:scale-90"
+                                                    className="p-2 text-red-500 cursor-pointer hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all active:scale-90"
                                                     title="Delete"
                                                 >
                                                     <TrashIcon />
@@ -418,13 +418,13 @@ export default function FastpikPage() {
                                                 setSelectedTier(user.tier === 'free' ? 'free' : user.tier);
                                                 setExpiryDate(user.expiresAt ? new Date(user.expiresAt).toISOString().split('T')[0] : new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]);
                                             }}
-                                            className="p-2 bg-bg border border-border rounded-lg text-fg-muted cursor-pointer hover:text-accent transition-all active:scale-90"
+                                            className="p-2 bg-bg border border-border rounded-lg text-blue-500 cursor-pointer hover:text-blue-700 transition-all active:scale-90"
                                         >
                                             <EditIcon />
                                         </button>
                                         <button
                                             onClick={() => setDeleteUser(user)}
-                                            className="p-2 bg-bg border border-border rounded-lg text-fg-muted cursor-pointer hover:text-danger transition-all active:scale-90"
+                                            className="p-2 bg-bg border border-border rounded-lg text-red-500 cursor-pointer hover:text-red-700 transition-all active:scale-90"
                                         >
                                             <TrashIcon />
                                         </button>
