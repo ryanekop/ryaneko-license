@@ -58,11 +58,18 @@ const CameraIcon = () => (
     </svg>
 );
 
+const GenerateIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+    </svg>
+);
+
 const TAB_ICONS: Record<string, React.ReactNode> = {
     'raw-file-copy-tool': <FolderIcon />,
     'realtime-upload-pro': <UploadIcon />,
     'photo-split-express': <ScissorsIcon />,
     'fastpik': <CameraIcon />,
+    'generate': <GenerateIcon />,
 };
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
@@ -80,6 +87,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         { name: t('tab.realtimeUpload'), href: '/admin/realtime-upload', slug: 'realtime-upload-pro' },
         { name: t('tab.photoSplit'), href: '/admin/photo-split', slug: 'photo-split-express' },
         { name: t('tab.fastpik'), href: '/admin/fastpik', slug: 'fastpik' },
+        { name: t('tab.generate'), href: '/admin/generate', slug: 'generate' },
     ];
 
     useEffect(() => {
