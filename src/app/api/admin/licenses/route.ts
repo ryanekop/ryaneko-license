@@ -14,24 +14,20 @@ export async function GET(request: NextRequest) {
         .from('licenses')
         .select('*, product:products!inner(*)', { count: 'exact' });
 
-    // Filter by product
     if (productSlug) {
         query = query.eq('product.slug', productSlug);
     }
 
-    // Filter by status
     if (status && status !== 'all') {
         query = query.eq('status', status);
     }
 
-    // Search by name, email, or serial
     if (search) {
         query = query.or(
             `customer_name.ilike.%${search}%,customer_email.ilike.%${search}%,serial_key.ilike.%${search}%`
         );
     }
 
-    // Pagination
     query = query
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
@@ -51,19 +47,35 @@ export async function GET(request: NextRequest) {
     });
 }
 
-// Update license
+// Update license (change device, reset status)
 export async function PATCH(request: NextRequest) {
     try {
         const body = await request.json();
-        const { id, ...updateData } = body;
+        const { id, action, ...updateData } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Missing license ID' }, { status: 400 });
         }
 
+        let finalUpdate = updateData;
+
+        // Reset action: clear all user data and set to available
+        if (action === 'reset') {
+            finalUpdate = {
+                status: 'available',
+                customer_name: null,
+                customer_email: null,
+                device_type: null,
+                device_id: null,
+                activated_at: null,
+                last_active_at: null,
+                order_id: null,
+            };
+        }
+
         const { data, error } = await supabaseAdmin
             .from('licenses')
-            .update(updateData)
+            .update(finalUpdate)
             .eq('id', id)
             .select()
             .single();
@@ -73,6 +85,37 @@ export async function PATCH(request: NextRequest) {
         }
 
         return NextResponse.json(data);
+    } catch (error) {
+        return NextResponse.json({ error: String(error) }, { status: 500 });
+    }
+}
+
+// Delete license
+export async function DELETE(request: NextRequest) {
+    try {
+        const { searchParams } = new URL(request.url);
+        const id = searchParams.get('id');
+
+        if (!id) {
+            return NextResponse.json({ error: 'Missing license ID' }, { status: 400 });
+        }
+
+        // Delete related activations first
+        await supabaseAdmin
+            .from('activations')
+            .delete()
+            .eq('license_id', id);
+
+        const { error } = await supabaseAdmin
+            .from('licenses')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true });
     } catch (error) {
         return NextResponse.json({ error: String(error) }, { status: 500 });
     }

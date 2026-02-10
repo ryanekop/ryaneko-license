@@ -1,25 +1,29 @@
 'use client';
 
+import { useLang } from '@/lib/providers';
+
 export default function FastpikPage() {
+    const { t } = useLang();
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
             <div>
-                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                    <span>📸</span> Fastpik
+                <h2 className="text-2xl font-bold text-fg flex items-center gap-2">
+                    <span>📸</span> {t('fastpik.title')}
                 </h2>
-                <p className="text-neutral-500 text-sm mt-2">
-                    Fastpik menggunakan sistem membership Mayar
+                <p className="text-fg-muted text-sm mt-2">
+                    {t('fastpik.desc')}
                 </p>
             </div>
 
-            <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-12 text-center">
+            <div className="bg-bg-card rounded-xl border border-border p-12 text-center shadow-[var(--shadow)] animate-slide-up">
                 <div className="text-5xl mb-4">🚧</div>
-                <h3 className="text-lg font-semibold text-white mb-2">Coming Soon</h3>
-                <p className="text-neutral-500 text-sm">
-                    Integrasi dengan Mayar Membership API akan segera hadir.
+                <h3 className="text-lg font-semibold text-fg mb-2">{t('fastpik.coming')}</h3>
+                <p className="text-fg-muted text-sm">
+                    {t('fastpik.comingDesc')}
                 </p>
-                <p className="text-neutral-600 text-xs mt-4">
-                    Sementara ini, kelola membership Fastpik di dashboard Mayar.
+                <p className="text-fg-muted/50 text-xs mt-4">
+                    {t('fastpik.note')}
                 </p>
             </div>
         </div>
