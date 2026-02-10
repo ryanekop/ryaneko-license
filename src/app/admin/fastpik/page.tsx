@@ -104,6 +104,7 @@ export default function FastpikPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [sortAsc, setSortAsc] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Create form
     const [showCreate, setShowCreate] = useState(false);
@@ -140,7 +141,13 @@ export default function FastpikPage() {
 
     useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
-    const sortedUsers = [...users].sort((a, b) => {
+    const filteredUsers = users.filter((u) => {
+        if (!searchQuery.trim()) return true;
+        const q = searchQuery.toLowerCase();
+        return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+    });
+
+    const sortedUsers = [...filteredUsers].sort((a, b) => {
         const da = new Date(a.createdAt).getTime();
         const db = new Date(b.createdAt).getTime();
         return sortAsc ? da - db : db - da;
@@ -257,6 +264,17 @@ export default function FastpikPage() {
                         <PlusIcon /> {t('fastpik.newUser')}
                     </button>
                 </div>
+            </div>
+
+            {/* Search */}
+            <div className="relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                <input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t('fastpik.searchPlaceholder')}
+                    className="w-full pl-10 pr-4 py-2.5 bg-bg-card border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
+                />
             </div>
 
             {/* Create Form */}

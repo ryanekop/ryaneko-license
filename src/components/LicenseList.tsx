@@ -412,49 +412,30 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                     licenses.map((license, index) => (
                         <div
                             key={license.id}
-                            className="table-row bg-bg-card rounded-xl border border-border p-4 space-y-3 shadow-[var(--shadow)]"
+                            className="table-row bg-bg-card rounded-xl border border-border p-4 shadow-[var(--shadow)]"
                             style={{ animationDelay: `${index * 0.04}s` }}
                         >
-                            {/* Row 1: Serial + Status */}
-                            <div className="flex items-start justify-between gap-2">
+                            {/* Top: Name/Serial + Status */}
+                            <div className="flex items-start justify-between gap-2 mb-1">
                                 <div className="min-w-0">
-                                    <div className="text-[10px] uppercase text-fg-muted font-medium tracking-wider mb-0.5">{t('list.serial')}</div>
-                                    <div className="font-mono text-sm text-fg break-all">{license.serial_key}</div>
+                                    <p className="font-semibold text-fg text-sm">{license.customer_name || <span className="text-fg-muted font-normal">—</span>}</p>
+                                    <p className="font-mono text-xs text-fg-muted break-all mt-0.5">{license.serial_key}</p>
                                 </div>
                                 {getStatusBadge(license.status)}
                             </div>
 
-                            {/* Row 2: User info */}
-                            {(license.customer_name || license.customer_email) && (
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <div className="text-[10px] uppercase text-fg-muted font-medium tracking-wider mb-0.5 flex items-center gap-1">{Icons.user} {t('list.name')}</div>
-                                        <div className="text-sm font-medium text-fg">{license.customer_name || '-'}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] uppercase text-fg-muted font-medium tracking-wider mb-0.5 flex items-center gap-1">{Icons.mail} {t('list.email')}</div>
-                                        <div className="text-sm text-fg-secondary truncate">{license.customer_email || '-'}</div>
-                                    </div>
+                            {/* Bottom: Info + Actions */}
+                            <div className="flex items-end justify-between mt-3 pt-3 border-t border-border-light">
+                                <div className="text-xs text-fg space-y-0.5">
+                                    {license.customer_email && <p>{license.customer_email}</p>}
+                                    <p>{t('list.device')}: {license.device_type || '—'}</p>
+                                    <p>{t('list.activated')}: {formatDate(license.activated_at)}</p>
                                 </div>
-                            )}
-
-                            {/* Row 3: Device + Date */}
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <div className="text-[10px] uppercase text-fg-muted font-medium tracking-wider mb-0.5 flex items-center gap-1">{Icons.monitor} {t('list.device')}</div>
-                                    <div className="text-sm text-fg">{license.device_type || '-'}</div>
+                                <div className="flex gap-1.5 shrink-0 ml-2">
+                                    <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="px-2.5 py-1.5 bg-warning text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-amber-600 transition-all active:scale-95 flex items-center gap-1">{Icons.edit} {t('action.change')}</button>
+                                    <button onClick={() => setResetDialog(license)} className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-blue-600 transition-all active:scale-95 flex items-center gap-1">{Icons.reset} {t('action.reset')}</button>
+                                    <button onClick={() => setDeleteDialog(license)} className="px-2.5 py-1.5 bg-danger text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-red-600 transition-all active:scale-95 flex items-center gap-1">{Icons.trash}</button>
                                 </div>
-                                <div>
-                                    <div className="text-[10px] uppercase text-fg-muted font-medium tracking-wider mb-0.5 flex items-center gap-1">{Icons.calendar} {t('list.activated')}</div>
-                                    <div className="text-sm text-fg-muted">{formatDate(license.activated_at)}</div>
-                                </div>
-                            </div>
-
-                            {/* Row 4: Actions */}
-                            <div className="flex items-center gap-2 pt-1 border-t border-border-light">
-                                <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 transition-all active:scale-95">{Icons.edit} {t('action.change')}</button>
-                                <button onClick={() => setResetDialog(license)} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 transition-all active:scale-95">{Icons.reset} {t('action.reset')}</button>
-                                <button onClick={() => setDeleteDialog(license)} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold bg-danger text-white rounded-lg cursor-pointer hover:bg-red-600 transition-all active:scale-95">{Icons.trash}</button>
                             </div>
                         </div>
                     ))
