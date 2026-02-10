@@ -6,6 +6,19 @@ const FolderIcon = () => (
     </svg>
 );
 
+const PLATFORMS = [
+    { value: 'Windows', label: 'Windows' },
+    { value: 'Mac', label: 'Mac' },
+    { value: 'Mac (Monterey)', label: 'Mac (Monterey)' },
+];
+
 export default function RawFileCopyPage() {
-    return <LicenseList productSlug="raw-file-copy-tool" productName="RAW File Copy Tool" productIcon={<FolderIcon />} />;
+    return (
+        <LicenseList
+            productSlug="raw-file-copy-tool"
+            productName="RAW File Copy Tool"
+            productIcon={<FolderIcon />}
+            platforms={PLATFORMS}
+        />
+    );
 }

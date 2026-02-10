@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useLang } from '@/lib/providers';
 
 interface Product {
@@ -27,88 +28,76 @@ interface LicenseListProps {
     productSlug: string;
     productName: string;
     productIcon?: React.ReactNode;
+    platforms?: { value: string; label: string }[];
 }
+
+const DEFAULT_PLATFORMS = [
+    { value: 'Mac', label: 'Mac' },
+    { value: 'Windows', label: 'Windows' },
+];
 
 // --- SVG ICONS ---
 const Icons = {
     search: (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
-        </svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
     ),
     refresh: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg>
     ),
     edit: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
     ),
     reset: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
     ),
     trash: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
     ),
     sortAsc: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m3 8 4-4 4 4" /><path d="M7 4v16" /><path d="M11 12h4" /><path d="M11 16h7" /><path d="M11 20h10" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 8 4-4 4 4" /><path d="M7 4v16" /><path d="M11 12h4" /><path d="M11 16h7" /><path d="M11 20h10" /></svg>
     ),
     sortDesc: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m3 16 4 4 4-4" /><path d="M7 20V4" /><path d="M11 4h10" /><path d="M11 8h7" /><path d="M11 12h4" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 16 4 4 4-4" /><path d="M7 20V4" /><path d="M11 4h10" /><path d="M11 8h7" /><path d="M11 12h4" /></svg>
     ),
     key: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4" /><path d="m21 2-9.6 9.6" /><circle cx="7.5" cy="15.5" r="5.5" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4" /><path d="m21 2-9.6 9.6" /><circle cx="7.5" cy="15.5" r="5.5" /></svg>
     ),
     user: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
     ),
     mail: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>
     ),
     monitor: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></svg>
     ),
     calendar: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M8 2v4" /><path d="M16 2v4" /><rect width="18" height="18" x="3" y="4" rx="2" /><path d="M3 10h18" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v4" /><path d="M16 2v4" /><rect width="18" height="18" x="3" y="4" rx="2" /><path d="M3 10h18" /></svg>
     ),
     warning: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
     ),
     inbox: (
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-        </svg>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
     ),
     chart: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="m19 9-5 5-4-4-3 3" />
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="m19 9-5 5-4-4-3 3" /></svg>
+    ),
+    eye: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg>
+    ),
+    eyeOff: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" /><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" /><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" /><path d="m2 2 20 20" /></svg>
+    ),
+    chevronLeft: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+    ),
+    chevronRight: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
     ),
 };
 
-// --- DIALOG COMPONENT ---
+// --- PORTAL DIALOG COMPONENT ---
 function Dialog({
     open,
     onClose,
@@ -118,20 +107,25 @@ function Dialog({
     onClose: () => void;
     children: React.ReactNode;
 }) {
-    if (!open) return null;
-    return (
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => { setMounted(true); }, []);
+
+    if (!open || !mounted) return null;
+
+    return createPortal(
         <>
             <div className="dialog-overlay" onClick={onClose} />
             <div className="dialog-content">
-                <div className="bg-bg-card rounded-2xl border border-border shadow-[var(--shadow-lg)] p-6">
+                <div className="bg-bg-card rounded-2xl border border-border shadow-[var(--shadow-lg)] p-5 sm:p-6">
                     {children}
                 </div>
             </div>
-        </>
+        </>,
+        document.body
     );
 }
 
-export default function LicenseList({ productSlug, productName, productIcon }: LicenseListProps) {
+export default function LicenseList({ productSlug, productName, productIcon, platforms = DEFAULT_PLATFORMS }: LicenseListProps) {
     const { t } = useLang();
     const [licenses, setLicenses] = useState<License[]>([]);
     const [loading, setLoading] = useState(true);
@@ -140,8 +134,8 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [sortAsc, setSortAsc] = useState(false);
+    const [showEmpty, setShowEmpty] = useState(true);
 
-    // Dialog states
     const [changeDialog, setChangeDialog] = useState<License | null>(null);
     const [resetDialog, setResetDialog] = useState<License | null>(null);
     const [deleteDialog, setDeleteDialog] = useState<License | null>(null);
@@ -158,6 +152,7 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
                 status: statusFilter,
                 sort: sortAsc ? 'asc' : 'desc',
                 ...(search && { search }),
+                ...(!showEmpty && { hideEmpty: 'true' }),
             });
 
             const res = await fetch(`/api/admin/licenses?${params}`);
@@ -170,7 +165,7 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
         } finally {
             setLoading(false);
         }
-    }, [productSlug, page, search, statusFilter, sortAsc]);
+    }, [productSlug, page, search, statusFilter, sortAsc, showEmpty]);
 
     useEffect(() => {
         fetchLicenses();
@@ -228,23 +223,23 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
         switch (status) {
             case 'available':
                 return (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-success/10 text-success border border-success/20">
-                        <span className="w-1.5 h-1.5 rounded-full bg-success" />
-                        {t('list.statusAvailable').replace(/[^\w\s]/g, '').trim()}
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        {t('list.statusAvailable')}
                     </span>
                 );
             case 'used':
                 return (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-fg-muted/10 text-fg-secondary border border-border">
-                        <span className="w-1.5 h-1.5 rounded-full bg-fg-muted" />
-                        {t('list.statusUsed').replace(/[^\w\s]/g, '').trim()}
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                        {t('list.statusUsed')}
                     </span>
                 );
             case 'revoked':
                 return (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-danger/10 text-danger border border-danger/20">
-                        <span className="w-1.5 h-1.5 rounded-full bg-danger" />
-                        {t('list.statusRevoked').replace(/[^\w\s]/g, '').trim()}
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/25">
+                        <span className="w-2 h-2 rounded-full bg-red-500" />
+                        {t('list.statusRevoked')}
                     </span>
                 );
             default:
@@ -265,39 +260,52 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
     const usedCount = licenses.filter(l => l.status === 'used').length;
 
     return (
-        <div className="space-y-5">
+        <div className="space-y-4 sm:space-y-5">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 animate-fade-in">
-                <div>
-                    <h2 className="text-2xl font-bold text-fg flex items-center gap-2.5">
-                        {productIcon} {productName}
-                    </h2>
-                    <div className="flex items-center gap-4 mt-2 text-sm text-fg-muted">
-                        <span className="flex items-center gap-1.5">{Icons.chart} {t('list.total')}: <b className="text-fg">{total}</b></span>
-                        <span>{t('list.available')}: <b className="text-success">{availableCount}</b></span>
-                        <span>{t('list.used')}: <b className="text-fg-secondary">{usedCount}</b></span>
+            <div className="flex flex-col gap-3 animate-fade-in">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h2 className="text-xl sm:text-2xl font-bold text-fg flex items-center gap-2.5">
+                            {productIcon} {productName}
+                        </h2>
+                        <div className="flex items-center gap-3 sm:gap-4 mt-2 text-xs sm:text-sm text-fg-muted">
+                            <span className="flex items-center gap-1.5">{Icons.chart} {t('list.total')}: <b className="text-fg">{total}</b></span>
+                            <span>{t('list.available')}: <b className="text-emerald-600">{availableCount}</b></span>
+                            <span>{t('list.used')}: <b className="text-amber-600">{usedCount}</b></span>
+                        </div>
                     </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => { setSortAsc(!sortAsc); setPage(1); }}
-                        className="px-3 py-2 bg-bg-card border border-border rounded-lg text-fg-secondary text-sm cursor-pointer hover:bg-bg-secondary hover:text-fg hover:border-fg-muted transition-all active:scale-95 flex items-center gap-1.5 shadow-[var(--shadow)]"
-                        title={sortAsc ? 'Oldest first' : 'Newest first'}
-                    >
-                        {sortAsc ? Icons.sortAsc : Icons.sortDesc}
-                        <span className="hidden sm:inline">{sortAsc ? (t('list.sortOldest') || 'Terlama') : (t('list.sortNewest') || 'Terbaru')}</span>
-                    </button>
-                    <button
-                        onClick={fetchLicenses}
-                        className="px-3 py-2 bg-bg-card border border-border rounded-lg text-fg-secondary text-sm cursor-pointer hover:bg-bg-secondary hover:text-fg hover:border-fg-muted transition-all active:scale-95 flex items-center gap-1.5 shadow-[var(--shadow)]"
-                    >
-                        {Icons.refresh} {t('list.refresh')}
-                    </button>
+                    {/* Action buttons row */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                            onClick={() => { setShowEmpty(!showEmpty); setPage(1); }}
+                            className={`px-3 py-2 border rounded-lg text-xs sm:text-sm cursor-pointer transition-all active:scale-95 flex items-center gap-1.5 shadow-[var(--shadow)] font-medium ${showEmpty
+                                    ? 'bg-bg-card border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
+                                    : 'bg-accent text-accent-fg border-accent'
+                                }`}
+                            title={showEmpty ? 'Hide empty serials' : 'Show empty serials'}
+                        >
+                            {showEmpty ? Icons.eye : Icons.eyeOff}
+                            <span className="hidden sm:inline">{showEmpty ? (t('list.showEmpty') || 'Serial Kosong') : (t('list.hideEmpty') || 'Sembunyikan')}</span>
+                        </button>
+                        <button
+                            onClick={() => { setSortAsc(!sortAsc); setPage(1); }}
+                            className="px-3 py-2 bg-bg-card border border-border rounded-lg text-fg-secondary text-xs sm:text-sm cursor-pointer hover:bg-bg-secondary hover:text-fg hover:border-fg-muted transition-all active:scale-95 flex items-center gap-1.5 shadow-[var(--shadow)] font-medium"
+                        >
+                            {sortAsc ? Icons.sortAsc : Icons.sortDesc}
+                            <span className="hidden sm:inline">{sortAsc ? t('list.sortOldest') : t('list.sortNewest')}</span>
+                        </button>
+                        <button
+                            onClick={fetchLicenses}
+                            className="px-3 py-2 bg-bg-card border border-border rounded-lg text-fg-secondary text-xs sm:text-sm cursor-pointer hover:bg-bg-secondary hover:text-fg hover:border-fg-muted transition-all active:scale-95 flex items-center gap-1.5 shadow-[var(--shadow)] font-medium"
+                        >
+                            {Icons.refresh} <span className="hidden sm:inline">{t('list.refresh')}</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
             {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-3 animate-slide-up">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 animate-slide-up">
                 <div className="relative flex-1">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted">{Icons.search}</span>
                     <input
@@ -320,18 +328,18 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
                 </select>
             </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto bg-bg-card rounded-xl border border-border shadow-[var(--shadow)] animate-slide-up stagger-1" style={{ opacity: 0 }}>
-                <table className="w-full">
-                    <thead>
-                        <tr className="text-left text-fg-muted text-xs uppercase tracking-wider border-b border-border">
+            {/* === DESKTOP TABLE === */}
+            <div className="hidden md:block overflow-auto max-h-[calc(100vh-280px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)] animate-slide-up stagger-1" style={{ opacity: 0 }}>
+                <table className="w-full min-w-[900px]">
+                    <thead className="sticky top-0 bg-bg-card z-10 border-b border-border">
+                        <tr className="text-left text-fg-muted text-xs uppercase tracking-wider">
                             <th className="px-4 py-3 font-medium">No.</th>
-                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.key} {t('list.serial').replace(/[^\w\s]/g, '').trim()}</span></th>
+                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.key} {t('list.serial')}</span></th>
                             <th className="px-4 py-3 font-medium">{t('list.status')}</th>
-                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.user} {t('list.name').replace(/[^\w\s]/g, '').trim()}</span></th>
-                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.mail} {t('list.email').replace(/[^\w\s]/g, '').trim()}</span></th>
-                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.monitor} {t('list.device').replace(/[^\w\s]/g, '').trim()}</span></th>
-                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.calendar} {t('list.activated').replace(/[^\w\s]/g, '').trim()}</span></th>
+                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.user} {t('list.name')}</span></th>
+                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.mail} {t('list.email')}</span></th>
+                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.monitor} {t('list.device')}</span></th>
+                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.calendar} {t('list.activated')}</span></th>
                             <th className="px-4 py-3 font-medium text-right">{t('list.actions')}</th>
                         </tr>
                     </thead>
@@ -341,7 +349,7 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
                                 <tr key={i} className="table-row" style={{ animationDelay: `${i * 0.05}s` }}>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-6" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-36" /></td>
-                                    <td className="px-4 py-3"><div className="skeleton h-5 w-20 rounded-full" /></td>
+                                    <td className="px-4 py-3"><div className="skeleton h-6 w-20 rounded-full" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-28" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-36" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-16" /></td>
@@ -363,44 +371,18 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
                                     className="table-row text-fg hover:bg-bg-secondary/50 transition-colors"
                                     style={{ animationDelay: `${index * 0.03}s` }}
                                 >
-                                    <td className="px-4 py-3 text-sm text-fg-muted">
-                                        {(page - 1) * 50 + index + 1}
-                                    </td>
-                                    <td className="px-4 py-3 font-mono text-sm text-fg-secondary">
-                                        {license.serial_key}
-                                    </td>
+                                    <td className="px-4 py-3 text-sm text-fg-muted">{(page - 1) * 50 + index + 1}</td>
+                                    <td className="px-4 py-3 font-mono text-sm text-fg-secondary">{license.serial_key}</td>
                                     <td className="px-4 py-3">{getStatusBadge(license.status)}</td>
                                     <td className="px-4 py-3 text-sm font-medium">{license.customer_name || <span className="text-fg-muted font-normal">-</span>}</td>
-                                    <td className="px-4 py-3 text-fg-secondary text-sm">
-                                        {license.customer_email || <span className="text-fg-muted">-</span>}
-                                    </td>
+                                    <td className="px-4 py-3 text-fg-secondary text-sm">{license.customer_email || <span className="text-fg-muted">-</span>}</td>
                                     <td className="px-4 py-3 text-sm">{license.device_type || <span className="text-fg-muted">-</span>}</td>
-                                    <td className="px-4 py-3 text-sm text-fg-muted">
-                                        {formatDate(license.activated_at)}
-                                    </td>
+                                    <td className="px-4 py-3 text-sm text-fg-muted">{formatDate(license.activated_at)}</td>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center justify-end gap-1.5">
-                                            {/* UBAH - bold warning button */}
-                                            <button
-                                                onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }}
-                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 hover:shadow-md transition-all active:scale-95"
-                                            >
-                                                {Icons.edit} {t('action.change')}
-                                            </button>
-                                            {/* RESET - bold neutral button */}
-                                            <button
-                                                onClick={() => setResetDialog(license)}
-                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-fg-muted/20 text-fg-secondary border border-border rounded-lg cursor-pointer hover:bg-fg-muted/30 hover:text-fg hover:shadow-md transition-all active:scale-95"
-                                            >
-                                                {Icons.reset} {t('action.reset')}
-                                            </button>
-                                            {/* HAPUS - bold red button */}
-                                            <button
-                                                onClick={() => setDeleteDialog(license)}
-                                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold bg-danger text-white rounded-lg cursor-pointer hover:bg-red-600 hover:shadow-md transition-all active:scale-95"
-                                            >
-                                                {Icons.trash}
-                                            </button>
+                                            <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 hover:shadow-md transition-all active:scale-95">{Icons.edit} {t('action.change')}</button>
+                                            <button onClick={() => setResetDialog(license)} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 hover:shadow-md transition-all active:scale-95">{Icons.reset} {t('action.reset')}</button>
+                                            <button onClick={() => setDeleteDialog(license)} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold bg-danger text-white rounded-lg cursor-pointer hover:bg-red-600 hover:shadow-md transition-all active:scale-95">{Icons.trash}</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -410,44 +392,113 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
                 </table>
             </div>
 
+            {/* === MOBILE CARDS === */}
+            <div className="md:hidden space-y-3 animate-slide-up stagger-1" style={{ opacity: 0 }}>
+                {loading ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="bg-bg-card rounded-xl border border-border p-4 space-y-3" style={{ animationDelay: `${i * 0.05}s` }}>
+                            <div className="skeleton h-4 w-48" />
+                            <div className="skeleton h-6 w-24 rounded-full" />
+                            <div className="skeleton h-4 w-36" />
+                            <div className="skeleton h-8 w-full" />
+                        </div>
+                    ))
+                ) : licenses.length === 0 ? (
+                    <div className="bg-bg-card rounded-xl border border-border p-8 text-center text-fg-muted animate-fade-in">
+                        <div className="flex justify-center mb-3 opacity-40">{Icons.inbox}</div>
+                        {t('list.empty')}
+                    </div>
+                ) : (
+                    licenses.map((license, index) => (
+                        <div
+                            key={license.id}
+                            className="table-row bg-bg-card rounded-xl border border-border p-4 space-y-3 shadow-[var(--shadow)]"
+                            style={{ animationDelay: `${index * 0.04}s` }}
+                        >
+                            {/* Row 1: Serial + Status */}
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <div className="text-[10px] uppercase text-fg-muted font-medium tracking-wider mb-0.5">{t('list.serial')}</div>
+                                    <div className="font-mono text-sm text-fg break-all">{license.serial_key}</div>
+                                </div>
+                                {getStatusBadge(license.status)}
+                            </div>
+
+                            {/* Row 2: User info */}
+                            {(license.customer_name || license.customer_email) && (
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <div className="text-[10px] uppercase text-fg-muted font-medium tracking-wider mb-0.5 flex items-center gap-1">{Icons.user} {t('list.name')}</div>
+                                        <div className="text-sm font-medium text-fg">{license.customer_name || '-'}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] uppercase text-fg-muted font-medium tracking-wider mb-0.5 flex items-center gap-1">{Icons.mail} {t('list.email')}</div>
+                                        <div className="text-sm text-fg-secondary truncate">{license.customer_email || '-'}</div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Row 3: Device + Date */}
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <div className="text-[10px] uppercase text-fg-muted font-medium tracking-wider mb-0.5 flex items-center gap-1">{Icons.monitor} {t('list.device')}</div>
+                                    <div className="text-sm text-fg">{license.device_type || '-'}</div>
+                                </div>
+                                <div>
+                                    <div className="text-[10px] uppercase text-fg-muted font-medium tracking-wider mb-0.5 flex items-center gap-1">{Icons.calendar} {t('list.activated')}</div>
+                                    <div className="text-sm text-fg-muted">{formatDate(license.activated_at)}</div>
+                                </div>
+                            </div>
+
+                            {/* Row 4: Actions */}
+                            <div className="flex items-center gap-2 pt-1 border-t border-border-light">
+                                <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 transition-all active:scale-95">{Icons.edit} {t('action.change')}</button>
+                                <button onClick={() => setResetDialog(license)} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 transition-all active:scale-95">{Icons.reset} {t('action.reset')}</button>
+                                <button onClick={() => setDeleteDialog(license)} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold bg-danger text-white rounded-lg cursor-pointer hover:bg-red-600 transition-all active:scale-95">{Icons.trash}</button>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+
             {/* Pagination */}
             {total > 50 && (
                 <div className="flex items-center justify-center gap-3 animate-fade-in">
                     <button
                         onClick={() => setPage((p) => Math.max(1, p - 1))}
                         disabled={page === 1}
-                        className="px-4 py-2 bg-bg-card border border-border rounded-lg text-fg text-sm disabled:opacity-30 cursor-pointer hover:bg-bg-secondary active:scale-95 transition-all"
+                        className="px-3 sm:px-4 py-2 bg-bg-card border border-border rounded-lg text-fg text-sm disabled:opacity-30 cursor-pointer hover:bg-bg-secondary active:scale-95 transition-all flex items-center gap-1.5"
                     >
-                        {t('list.previous')}
+                        {Icons.chevronLeft} <span className="hidden sm:inline">{t('list.previous')}</span>
                     </button>
                     <span className="px-3 py-2 text-fg-muted text-sm">
-                        {t('list.page')} {page} {t('list.of')} {Math.ceil(total / 50)}
+                        {page} / {Math.ceil(total / 50)}
                     </span>
                     <button
                         onClick={() => setPage((p) => p + 1)}
                         disabled={page >= Math.ceil(total / 50)}
-                        className="px-4 py-2 bg-bg-card border border-border rounded-lg text-fg text-sm disabled:opacity-30 cursor-pointer hover:bg-bg-secondary active:scale-95 transition-all"
+                        className="px-3 sm:px-4 py-2 bg-bg-card border border-border rounded-lg text-fg text-sm disabled:opacity-30 cursor-pointer hover:bg-bg-secondary active:scale-95 transition-all flex items-center gap-1.5"
                     >
-                        {t('list.next')}
+                        <span className="hidden sm:inline">{t('list.next')}</span> {Icons.chevronRight}
                     </button>
                 </div>
             )}
 
-            {/* ===== DIALOGS ===== */}
+            {/* ===== PORTAL DIALOGS ===== */}
 
             {/* Change Device Dialog */}
             <Dialog open={!!changeDialog} onClose={() => { setChangeDialog(null); setNewPlatform(''); }}>
                 <div className="space-y-4">
                     <div className="flex items-start gap-3">
-                        <div className="p-2 bg-warning/10 text-warning rounded-lg">{Icons.edit}</div>
+                        <div className="p-2 bg-warning/10 text-warning rounded-lg shrink-0">{Icons.edit}</div>
                         <div>
-                            <h3 className="text-lg font-semibold text-fg">{t('dialog.changeTitle')}</h3>
+                            <h3 className="text-base sm:text-lg font-semibold text-fg">{t('dialog.changeTitle')}</h3>
                             <p className="text-fg-muted text-sm mt-0.5">{t('dialog.changeDesc')}</p>
                         </div>
                     </div>
 
                     <div className="bg-bg-secondary rounded-lg p-3 text-sm space-y-1">
-                        <div className="text-fg-muted">{t('dialog.resetSerial')}: <span className="text-fg font-mono">{changeDialog?.serial_key}</span></div>
+                        <div className="text-fg-muted">{t('dialog.resetSerial')}: <span className="text-fg font-mono text-xs sm:text-sm break-all">{changeDialog?.serial_key}</span></div>
                         <div className="text-fg-muted">{t('dialog.resetUser')}: <span className="text-fg">{changeDialog?.customer_name || '-'}</span></div>
                     </div>
 
@@ -457,34 +508,15 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
                         className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg focus:outline-none focus:ring-2 focus:ring-accent/20 text-sm cursor-pointer hover:bg-bg-secondary transition-all"
                     >
                         <option value="">{t('dialog.selectPlatform')}</option>
-                        <option value="Mac">Mac</option>
-                        <option value="Windows">Windows</option>
-                        <option value="Mac (Monterey)">Mac (Monterey)</option>
-                        <option value="Mac (Ventura)">Mac (Ventura)</option>
-                        <option value="Mac (Sonoma)">Mac (Sonoma)</option>
-                        <option value="Mac (Sequoia)">Mac (Sequoia)</option>
+                        {platforms.map((p) => (
+                            <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
                     </select>
 
                     <div className="flex gap-2 pt-2">
-                        <button
-                            onClick={() => { setChangeDialog(null); setNewPlatform(''); }}
-                            className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium"
-                        >
-                            {t('dialog.cancel')}
-                        </button>
-                        <button
-                            onClick={handleChangeDevice}
-                            disabled={!newPlatform || actionLoading}
-                            className="flex-1 py-2.5 bg-warning text-white rounded-xl cursor-pointer hover:bg-amber-600 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2"
-                        >
-                            {actionLoading ? (
-                                <>
-                                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    {t('dialog.processing')}
-                                </>
-                            ) : (
-                                t('dialog.confirm')
-                            )}
+                        <button onClick={() => { setChangeDialog(null); setNewPlatform(''); }} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
+                        <button onClick={handleChangeDevice} disabled={!newPlatform || actionLoading} className="flex-1 py-2.5 bg-warning text-white rounded-xl cursor-pointer hover:bg-amber-600 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
+                            {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('dialog.confirm')}
                         </button>
                     </div>
                 </div>
@@ -494,38 +526,22 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
             <Dialog open={!!resetDialog} onClose={() => setResetDialog(null)}>
                 <div className="space-y-4">
                     <div className="flex items-start gap-3">
-                        <div className="p-2 bg-fg-muted/10 text-fg-secondary rounded-lg">{Icons.reset}</div>
+                        <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg shrink-0">{Icons.reset}</div>
                         <div>
-                            <h3 className="text-lg font-semibold text-fg">{t('dialog.resetTitle')}</h3>
+                            <h3 className="text-base sm:text-lg font-semibold text-fg">{t('dialog.resetTitle')}</h3>
                             <p className="text-fg-muted text-sm mt-0.5">{t('dialog.resetDesc')}</p>
                         </div>
                     </div>
 
                     <div className="bg-bg-secondary rounded-lg p-3 text-sm space-y-1">
-                        <div className="text-fg-muted">{t('dialog.resetSerial')}: <span className="text-fg font-mono">{resetDialog?.serial_key}</span></div>
+                        <div className="text-fg-muted">{t('dialog.resetSerial')}: <span className="text-fg font-mono text-xs sm:text-sm break-all">{resetDialog?.serial_key}</span></div>
                         <div className="text-fg-muted">{t('dialog.resetUser')}: <span className="text-fg">{resetDialog?.customer_name || '-'}</span></div>
                     </div>
 
                     <div className="flex gap-2 pt-2">
-                        <button
-                            onClick={() => setResetDialog(null)}
-                            className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium"
-                        >
-                            {t('dialog.cancel')}
-                        </button>
-                        <button
-                            onClick={handleReset}
-                            disabled={actionLoading}
-                            className="flex-1 py-2.5 bg-accent text-accent-fg rounded-xl cursor-pointer hover:opacity-85 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2"
-                        >
-                            {actionLoading ? (
-                                <>
-                                    <span className="w-3.5 h-3.5 border-2 border-accent-fg/30 border-t-accent-fg rounded-full animate-spin" />
-                                    {t('dialog.processing')}
-                                </>
-                            ) : (
-                                t('dialog.confirm')
-                            )}
+                        <button onClick={() => setResetDialog(null)} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
+                        <button onClick={handleReset} disabled={actionLoading} className="flex-1 py-2.5 bg-blue-500 text-white rounded-xl cursor-pointer hover:bg-blue-600 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
+                            {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('dialog.confirm')}
                         </button>
                     </div>
                 </div>
@@ -535,38 +551,22 @@ export default function LicenseList({ productSlug, productName, productIcon }: L
             <Dialog open={!!deleteDialog} onClose={() => setDeleteDialog(null)}>
                 <div className="space-y-4">
                     <div className="flex items-start gap-3">
-                        <div className="p-2 bg-danger/10 text-danger rounded-lg">{Icons.warning}</div>
+                        <div className="p-2 bg-danger/10 text-danger rounded-lg shrink-0">{Icons.warning}</div>
                         <div>
-                            <h3 className="text-lg font-semibold text-danger">{t('dialog.deleteTitle')}</h3>
+                            <h3 className="text-base sm:text-lg font-semibold text-danger">{t('dialog.deleteTitle')}</h3>
                             <p className="text-fg-muted text-sm mt-0.5">{t('dialog.deleteDesc')}</p>
                         </div>
                     </div>
 
                     <div className="bg-danger/5 border border-danger/20 rounded-lg p-3 text-sm space-y-1">
-                        <div className="text-fg-muted">{t('dialog.resetSerial')}: <span className="text-fg font-mono">{deleteDialog?.serial_key}</span></div>
+                        <div className="text-fg-muted">{t('dialog.resetSerial')}: <span className="text-fg font-mono text-xs sm:text-sm break-all">{deleteDialog?.serial_key}</span></div>
                         <div className="text-fg-muted">{t('dialog.resetUser')}: <span className="text-fg">{deleteDialog?.customer_name || '-'}</span></div>
                     </div>
 
                     <div className="flex gap-2 pt-2">
-                        <button
-                            onClick={() => setDeleteDialog(null)}
-                            className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium"
-                        >
-                            {t('dialog.cancel')}
-                        </button>
-                        <button
-                            onClick={handleDelete}
-                            disabled={actionLoading}
-                            className="flex-1 py-2.5 bg-danger text-white rounded-xl cursor-pointer hover:bg-red-600 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2"
-                        >
-                            {actionLoading ? (
-                                <>
-                                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    {t('dialog.processing')}
-                                </>
-                            ) : (
-                                <>{t('action.delete')}</>
-                            )}
+                        <button onClick={() => setDeleteDialog(null)} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
+                        <button onClick={handleDelete} disabled={actionLoading} className="flex-1 py-2.5 bg-danger text-white rounded-xl cursor-pointer hover:bg-red-600 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
+                            {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('action.delete')}
                         </button>
                     </div>
                 </div>

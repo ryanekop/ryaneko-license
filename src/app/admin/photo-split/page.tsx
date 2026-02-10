@@ -6,6 +6,18 @@ const ScissorsIcon = () => (
     </svg>
 );
 
+const PLATFORMS = [
+    { value: 'Windows', label: 'Windows' },
+    { value: 'Mac', label: 'Mac' },
+];
+
 export default function PhotoSplitPage() {
-    return <LicenseList productSlug="photo-split-express" productName="Photo Split Express" productIcon={<ScissorsIcon />} />;
+    return (
+        <LicenseList
+            productSlug="photo-split-express"
+            productName="Photo Split Express"
+            productIcon={<ScissorsIcon />}
+            platforms={PLATFORMS}
+        />
+    );
 }

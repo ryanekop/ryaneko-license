@@ -28,6 +28,11 @@ export async function GET(request: NextRequest) {
         );
     }
 
+    const hideEmpty = searchParams.get('hideEmpty');
+    if (hideEmpty === 'true') {
+        query = query.neq('status', 'available');
+    }
+
     const sort = searchParams.get('sort');
     const ascending = sort === 'asc';
 

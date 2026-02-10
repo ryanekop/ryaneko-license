@@ -6,6 +6,18 @@ const UploadIcon = () => (
     </svg>
 );
 
+const PLATFORMS = [
+    { value: 'Windows', label: 'Windows' },
+    { value: 'Mac', label: 'Mac' },
+];
+
 export default function RealtimeUploadPage() {
-    return <LicenseList productSlug="realtime-upload-pro" productName="Realtime Upload Pro" productIcon={<UploadIcon />} />;
+    return (
+        <LicenseList
+            productSlug="realtime-upload-pro"
+            productName="Realtime Upload Pro"
+            productIcon={<UploadIcon />}
+            platforms={PLATFORMS}
+        />
+    );
 }
