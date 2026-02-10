@@ -67,17 +67,14 @@ export async function PATCH(request: NextRequest) {
 
         let finalUpdate = updateData;
 
-        // Reset action: clear all user data and set to available
+        // Reset action: clear device data and set to available, keep owner info
         if (action === 'reset') {
             finalUpdate = {
                 status: 'available',
-                customer_name: null,
-                customer_email: null,
                 device_type: null,
                 device_id: null,
                 activated_at: null,
                 last_active_at: null,
-                order_id: null,
             };
         }
 
