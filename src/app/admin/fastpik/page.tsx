@@ -371,7 +371,7 @@ export default function FastpikPage() {
                             </thead>
                             <tbody className="divide-y divide-border-light">
                                 {sortedUsers.map((user, i) => (
-                                    <tr key={user.id} className="table-row text-fg hover:bg-bg-secondary/50 transition-colors" style={{ animationDelay: `${i * 0.02}s` }}>
+                                    <tr key={user.id} className="row-animate text-fg hover:bg-bg-secondary/50 transition-colors" style={{ animationDelay: `${i * 0.02}s` }}>
                                         <td className="px-4 py-2.5 text-sm font-medium">{user.name}</td>
                                         <td className="px-4 py-2.5 text-sm">{user.email}</td>
                                         <td className="px-4 py-2.5">{getTierBadge(user.tier, user.status)}</td>

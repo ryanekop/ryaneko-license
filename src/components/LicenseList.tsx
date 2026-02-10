@@ -346,7 +346,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                     <tbody className="divide-y divide-border-light">
                         {loading ? (
                             Array.from({ length: 5 }).map((_, i) => (
-                                <tr key={i} className="table-row" style={{ animationDelay: `${i * 0.05}s` }}>
+                                <tr key={i} className="row-animate" style={{ animationDelay: `${i * 0.05}s` }}>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-6" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-36" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-6 w-20 rounded-full" /></td>
@@ -368,7 +368,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                             licenses.map((license, index) => (
                                 <tr
                                     key={license.id}
-                                    className="table-row text-fg hover:bg-bg-secondary/50 transition-colors"
+                                    className="row-animate text-fg hover:bg-bg-secondary/50 transition-colors"
                                     style={{ animationDelay: `${index * 0.03}s` }}
                                 >
                                     <td className="px-4 py-3 text-sm text-fg-muted">{(page - 1) * 50 + index + 1}</td>
@@ -412,7 +412,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                     licenses.map((license, index) => (
                         <div
                             key={license.id}
-                            className="table-row bg-bg-card rounded-xl border border-border p-4 shadow-[var(--shadow)]"
+                            className="row-animate bg-bg-card rounded-xl border border-border p-4 shadow-[var(--shadow)]"
                             style={{ animationDelay: `${index * 0.04}s` }}
                         >
                             {/* Top: Name/Serial + Status */}

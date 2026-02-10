@@ -332,7 +332,7 @@ export default function GeneratePage() {
                                 {result.serials.map((serial, index) => (
                                     <tr
                                         key={serial.serial_key}
-                                        className="table-row text-fg hover:bg-bg-secondary/50 transition-colors"
+                                        className="row-animate text-fg hover:bg-bg-secondary/50 transition-colors"
                                         style={{ animationDelay: `${index * 0.02}s` }}
                                     >
                                         <td className="px-4 py-2.5 text-sm text-fg-muted">{index + 1}</td>
