@@ -1,7 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLang } from '@/lib/providers';
+
+const PRODUCT_ROUTES: Record<string, string> = {
+    'raw-file-copy-tool': '/admin/raw-file-copy',
+    'realtime-upload-pro': '/admin/realtime-upload',
+    'photo-split-express': '/admin/photo-split',
+};
 
 const PRODUCTS = [
     { slug: 'raw-file-copy-tool', name: 'RAW File Copy Tool' },
@@ -50,6 +57,7 @@ interface GeneratedSerial {
 
 export default function GeneratePage() {
     const { t } = useLang();
+    const router = useRouter();
     const [selectedProduct, setSelectedProduct] = useState('');
     const [count, setCount] = useState(10);
     const [loading, setLoading] = useState(false);
@@ -227,6 +235,13 @@ export default function GeneratePage() {
                                 className="px-3 py-2 bg-bg-card border border-border rounded-lg text-xs font-medium text-fg cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 flex items-center gap-1.5"
                             >
                                 <DownloadIcon /> CSV
+                            </button>
+                            <button
+                                onClick={() => router.push(PRODUCT_ROUTES[selectedProduct] || '/admin')}
+                                className="px-3 py-2 bg-accent text-accent-fg rounded-lg text-xs font-semibold cursor-pointer hover:opacity-85 transition-all active:scale-95 flex items-center gap-1.5"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" x2="21" y1="14" y2="3" /></svg>
+                                {t('generate.viewDB')}
                             </button>
                         </div>
                     </div>
