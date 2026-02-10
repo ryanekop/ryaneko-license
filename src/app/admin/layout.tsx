@@ -9,6 +9,62 @@ interface AdminLayoutProps {
     children: ReactNode;
 }
 
+// SVG Icons
+const SunIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />
+    </svg>
+);
+
+const MoonIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+    </svg>
+);
+
+const KeyIcon = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4" /><path d="m21 2-9.6 9.6" /><circle cx="7.5" cy="15.5" r="5.5" />
+    </svg>
+);
+
+const LogOutIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" />
+    </svg>
+);
+
+const FolderIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+    </svg>
+);
+
+const UploadIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" />
+    </svg>
+);
+
+const ScissorsIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="6" cy="6" r="3" /><path d="M8.12 8.12 12 12" /><path d="M20 4 8.12 15.88" /><circle cx="6" cy="18" r="3" /><path d="M14.8 14.8 20 20" />
+    </svg>
+);
+
+const CameraIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" />
+    </svg>
+);
+
+const TAB_ICONS: Record<string, React.ReactNode> = {
+    'raw-file-copy-tool': <FolderIcon />,
+    'realtime-upload-pro': <UploadIcon />,
+    'photo-split-express': <ScissorsIcon />,
+    'fastpik': <CameraIcon />,
+};
+
 export default function AdminLayout({ children }: AdminLayoutProps) {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [password, setPassword] = useState('');
@@ -27,26 +83,20 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
     useEffect(() => {
         const saved = sessionStorage.getItem('admin_auth');
-        if (saved === 'true') {
-            setIsAuthenticated(true);
-        }
+        if (saved === 'true') setIsAuthenticated(true);
     }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
         setLoginLoading(true);
-
-        // Simulate minimum loading time for UX
         await new Promise(resolve => setTimeout(resolve, 800));
-
         try {
             const res = await fetch('/api/admin/auth', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ password }),
             });
-
             if (res.ok) {
                 setIsAuthenticated(true);
                 sessionStorage.setItem('admin_auth', 'true');
@@ -60,54 +110,51 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         }
     };
 
+    // Login screen
     if (!isAuthenticated) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-bg">
-                {/* Theme/Lang toggles */}
                 <div className="absolute top-4 right-4 flex gap-2">
                     <button
                         onClick={toggleTheme}
-                        className="p-2 rounded-lg border border-border bg-bg-card hover:bg-bg-secondary transition-all hover:scale-105 active:scale-95"
+                        className="w-9 h-9 flex items-center justify-center rounded-lg border border-border bg-bg-card text-fg-secondary cursor-pointer hover:bg-bg-secondary hover:text-fg transition-all active:scale-95"
                     >
-                        {theme === 'light' ? '🌙' : '☀️'}
+                        {theme === 'light' ? <MoonIcon /> : <SunIcon />}
                     </button>
                     <button
                         onClick={toggleLang}
-                        className="px-3 py-2 rounded-lg border border-border bg-bg-card text-fg-secondary text-xs font-medium hover:bg-bg-secondary transition-all hover:scale-105 active:scale-95"
+                        className="h-9 px-3 rounded-lg border border-border bg-bg-card text-fg-secondary text-xs font-semibold cursor-pointer hover:bg-bg-secondary hover:text-fg transition-all active:scale-95"
                     >
-                        {lang === 'id' ? '🇬🇧 EN' : '🇮🇩 ID'}
+                        {lang === 'id' ? 'EN' : 'ID'}
                     </button>
                 </div>
 
                 <div className="bg-bg-card p-8 rounded-2xl border border-border w-full max-w-sm mx-4 shadow-[var(--shadow-lg)] animate-fade-in-scale">
                     <div className="text-center mb-8">
-                        <div className="text-5xl mb-3 animate-fade-in">🔑</div>
-                        <h1 className="text-2xl font-bold text-fg">
-                            {t('login.title')}
-                        </h1>
+                        <div className="flex justify-center mb-3 text-fg animate-fade-in"><KeyIcon /></div>
+                        <h1 className="text-2xl font-bold text-fg">{t('login.title')}</h1>
                         <p className="text-fg-muted mt-1 text-sm">{t('login.subtitle')}</p>
                     </div>
 
                     <form onSubmit={handleLogin} className="space-y-4">
-                        <div>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder={t('login.placeholder')}
-                                disabled={loginLoading}
-                                className="w-full px-4 py-3 bg-bg border border-border rounded-xl text-fg placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all disabled:opacity-50"
-                            />
-                        </div>
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder={t('login.placeholder')}
+                            disabled={loginLoading}
+                            className="w-full px-4 py-3 bg-bg border border-border rounded-xl text-fg placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all disabled:opacity-50"
+                        />
                         {error && (
-                            <div className="text-danger text-sm text-center animate-fade-in flex items-center justify-center gap-1">
-                                <span>⚠️</span> {error}
+                            <div className="text-danger text-sm text-center animate-fade-in flex items-center justify-center gap-1.5">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="15" x2="9" y1="9" y2="15" /><line x1="9" x2="15" y1="9" y2="15" /></svg>
+                                {error}
                             </div>
                         )}
                         <button
                             type="submit"
                             disabled={loginLoading || !password}
-                            className="w-full py-3 bg-accent text-accent-fg font-medium rounded-xl hover:opacity-90 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
+                            className="w-full py-3 bg-accent text-accent-fg font-medium rounded-xl cursor-pointer hover:opacity-85 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
                             {loginLoading ? (
                                 <>
@@ -115,7 +162,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                     {t('login.loading')}
                                 </>
                             ) : (
-                                <>{t('login.button')} →</>
+                                <>{t('login.button')}</>
                             )}
                         </button>
                     </form>
@@ -124,46 +171,43 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         );
     }
 
+    // Main admin layout
     return (
         <div className="min-h-screen bg-bg">
-            {/* Header */}
             <header className="bg-bg-card border-b border-border sticky top-0 z-50 shadow-[var(--shadow)]">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
                     <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                            <span className="text-xl">🔑</span>
-                            <h1 className="text-base font-semibold text-fg">
-                                {t('header.title')}
-                            </h1>
+                        <div className="flex items-center gap-2.5 text-fg">
+                            <KeyIcon />
+                            <h1 className="text-base font-semibold">{t('header.title')}</h1>
                         </div>
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={toggleLang}
-                                className="px-2.5 py-1.5 rounded-lg border border-border text-fg-secondary text-xs font-medium hover:bg-bg-secondary transition-all hover:scale-105 active:scale-95"
+                                className="h-8 px-2.5 rounded-lg border border-border text-fg-secondary text-xs font-semibold cursor-pointer hover:bg-bg-secondary hover:text-fg transition-all active:scale-95"
                             >
-                                {lang === 'id' ? '🇬🇧 EN' : '🇮🇩 ID'}
+                                {lang === 'id' ? 'EN' : 'ID'}
                             </button>
                             <button
                                 onClick={toggleTheme}
-                                className="p-1.5 rounded-lg border border-border hover:bg-bg-secondary transition-all hover:scale-105 active:scale-95"
+                                className="w-8 h-8 flex items-center justify-center rounded-lg border border-border text-fg-secondary cursor-pointer hover:bg-bg-secondary hover:text-fg transition-all active:scale-95"
                             >
-                                {theme === 'light' ? '🌙' : '☀️'}
+                                {theme === 'light' ? <MoonIcon /> : <SunIcon />}
                             </button>
                             <button
                                 onClick={() => {
                                     sessionStorage.removeItem('admin_auth');
                                     setIsAuthenticated(false);
                                 }}
-                                className="ml-1 px-3 py-1.5 text-xs text-danger border border-border rounded-lg hover:bg-danger/10 hover:border-danger/30 transition-all hover:scale-105 active:scale-95"
+                                className="ml-1 h-8 px-3 text-xs text-danger border border-border rounded-lg cursor-pointer hover:bg-danger/10 hover:border-danger/30 transition-all active:scale-95 flex items-center gap-1.5 font-medium"
                             >
-                                {t('header.logout')}
+                                <LogOutIcon /> {t('header.logout')}
                             </button>
                         </div>
                     </div>
                 </div>
             </header>
 
-            {/* Tabs */}
             <div className="border-b border-border bg-bg-card">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6">
                     <nav className="flex space-x-1 overflow-x-auto py-2">
@@ -173,11 +217,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                 <Link
                                     key={tab.slug}
                                     href={tab.href}
-                                    className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all hover:scale-[1.02] active:scale-[0.98] ${isActive
+                                    className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all cursor-pointer active:scale-[0.97] flex items-center gap-2 ${isActive
                                             ? 'bg-accent text-accent-fg font-medium shadow-[var(--shadow)]'
                                             : 'text-fg-secondary hover:text-fg hover:bg-bg-secondary'
                                         }`}
                                 >
+                                    {TAB_ICONS[tab.slug]}
                                     {tab.name}
                                 </Link>
                             );
@@ -186,7 +231,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 </div>
             </div>
 
-            {/* Content */}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 animate-fade-in">
                 {children}
             </main>

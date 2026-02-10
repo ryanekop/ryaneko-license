@@ -28,8 +28,11 @@ export async function GET(request: NextRequest) {
         );
     }
 
+    const sort = searchParams.get('sort');
+    const ascending = sort === 'asc';
+
     query = query
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending })
         .range(offset, offset + limit - 1);
 
     const { data, count, error } = await query;
