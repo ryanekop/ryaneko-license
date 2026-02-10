@@ -134,7 +134,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [sortAsc, setSortAsc] = useState(false);
-    const [showEmpty, setShowEmpty] = useState(true);
+    const [showEmpty, setShowEmpty] = useState(false);
 
     const [changeDialog, setChangeDialog] = useState<License | null>(null);
     const [resetDialog, setResetDialog] = useState<License | null>(null);
@@ -279,8 +279,8 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                         <button
                             onClick={() => { setShowEmpty(!showEmpty); setPage(1); }}
                             className={`px-3 py-2 border rounded-lg text-xs sm:text-sm cursor-pointer transition-all active:scale-95 flex items-center gap-1.5 shadow-[var(--shadow)] font-medium ${showEmpty
-                                    ? 'bg-bg-card border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
-                                    : 'bg-accent text-accent-fg border-accent'
+                                ? 'bg-bg-card border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
+                                : 'bg-accent text-accent-fg border-accent'
                                 }`}
                             title={showEmpty ? 'Hide empty serials' : 'Show empty serials'}
                         >
