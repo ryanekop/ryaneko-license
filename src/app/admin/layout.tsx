@@ -69,6 +69,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [loginLoading, setLoginLoading] = useState(false);
     const pathname = usePathname();
     const { theme, toggleTheme } = useTheme();
@@ -137,14 +138,28 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     </div>
 
                     <form onSubmit={handleLogin} className="space-y-4">
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder={t('login.placeholder')}
-                            disabled={loginLoading}
-                            className="w-full px-4 py-3 bg-bg border border-border rounded-xl text-fg placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all disabled:opacity-50"
-                        />
+                        <div className="relative">
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder={t('login.placeholder')}
+                                disabled={loginLoading}
+                                className="w-full px-4 py-3 pr-11 bg-bg border border-border rounded-xl text-fg placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all disabled:opacity-50"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted cursor-pointer hover:text-fg transition-colors p-1"
+                                tabIndex={-1}
+                            >
+                                {showPassword ? (
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" /><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" /><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" /><path d="m2 2 20 20" /></svg>
+                                ) : (
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg>
+                                )}
+                            </button>
+                        </div>
                         {error && (
                             <div className="text-danger text-sm text-center animate-fade-in flex items-center justify-center gap-1.5">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="15" x2="9" y1="9" y2="15" /><line x1="9" x2="15" y1="9" y2="15" /></svg>
@@ -218,8 +233,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                     key={tab.slug}
                                     href={tab.href}
                                     className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all cursor-pointer active:scale-[0.97] flex items-center gap-2 ${isActive
-                                            ? 'bg-accent text-accent-fg font-medium shadow-[var(--shadow)]'
-                                            : 'text-fg-secondary hover:text-fg hover:bg-bg-secondary'
+                                        ? 'bg-accent text-accent-fg font-medium shadow-[var(--shadow)]'
+                                        : 'text-fg-secondary hover:text-fg hover:bg-bg-secondary'
                                         }`}
                                 >
                                     {TAB_ICONS[tab.slug]}
