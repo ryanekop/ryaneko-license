@@ -342,7 +342,7 @@ export default function FastpikPage() {
                     <div className="hidden md:block overflow-auto max-h-[calc(100vh-320px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)]">
                         <table className="w-full">
                             <thead className="sticky top-0 bg-bg-card z-10 border-b border-border">
-                                <tr className="text-left text-fg-muted text-xs uppercase tracking-wider">
+                                <tr className="text-left text-fg text-xs uppercase tracking-wider">
                                     <th className="px-4 py-3 font-medium">{t('fastpik.colName')}</th>
                                     <th className="px-4 py-3 font-medium">{t('fastpik.colEmail')}</th>
                                     <th className="px-4 py-3 font-medium">{t('fastpik.colPlan')}</th>
@@ -355,18 +355,18 @@ export default function FastpikPage() {
                                 {sortedUsers.map((user, i) => (
                                     <tr key={user.id} className="table-row text-fg hover:bg-bg-secondary/50 transition-colors" style={{ animationDelay: `${i * 0.02}s` }}>
                                         <td className="px-4 py-2.5 text-sm font-medium">{user.name}</td>
-                                        <td className="px-4 py-2.5 text-sm text-fg-muted">{user.email}</td>
+                                        <td className="px-4 py-2.5 text-sm">{user.email}</td>
                                         <td className="px-4 py-2.5">{getTierBadge(user.tier, user.status)}</td>
                                         <td className="px-4 py-2.5 text-sm">
                                             {user.tier === 'lifetime' ? (
                                                 <span className="text-amber-500 font-medium">∞ {t('fastpik.never')}</span>
                                             ) : (
-                                                <span className={isExpired(user.expiresAt) ? 'text-danger font-medium' : 'text-fg-muted'}>
+                                                <span className={isExpired(user.expiresAt) ? 'text-danger font-medium' : ''}>
                                                     {formatDate(user.expiresAt)}
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-2.5 text-sm text-fg-muted">{formatDate(user.createdAt)}</td>
+                                        <td className="px-4 py-2.5 text-sm">{formatDate(user.createdAt)}</td>
                                         <td className="px-4 py-2.5 text-right">
                                             <div className="flex justify-end gap-1.5">
                                                 <button
@@ -375,14 +375,14 @@ export default function FastpikPage() {
                                                         setSelectedTier(user.tier === 'free' ? 'free' : user.tier);
                                                         setExpiryDate(user.expiresAt ? new Date(user.expiresAt).toISOString().split('T')[0] : new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]);
                                                     }}
-                                                    className="p-2 text-blue-500 cursor-pointer hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all active:scale-90"
+                                                    className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-blue-600 transition-all active:scale-90 flex items-center gap-1"
                                                     title="Edit"
                                                 >
-                                                    <EditIcon />
+                                                    <EditIcon /> Edit
                                                 </button>
                                                 <button
                                                     onClick={() => setDeleteUser(user)}
-                                                    className="p-2 text-red-500 cursor-pointer hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all active:scale-90"
+                                                    className="px-2.5 py-1.5 bg-red-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-red-600 transition-all active:scale-90 flex items-center gap-1"
                                                     title="Delete"
                                                 >
                                                     <TrashIcon />
@@ -418,13 +418,13 @@ export default function FastpikPage() {
                                                 setSelectedTier(user.tier === 'free' ? 'free' : user.tier);
                                                 setExpiryDate(user.expiresAt ? new Date(user.expiresAt).toISOString().split('T')[0] : new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]);
                                             }}
-                                            className="p-2 bg-bg border border-border rounded-lg text-blue-500 cursor-pointer hover:text-blue-700 transition-all active:scale-90"
+                                            className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-blue-600 transition-all active:scale-90 flex items-center gap-1"
                                         >
-                                            <EditIcon />
+                                            <EditIcon /> Edit
                                         </button>
                                         <button
                                             onClick={() => setDeleteUser(user)}
-                                            className="p-2 bg-bg border border-border rounded-lg text-red-500 cursor-pointer hover:text-red-700 transition-all active:scale-90"
+                                            className="px-2.5 py-1.5 bg-red-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-red-600 transition-all active:scale-90 flex items-center gap-1"
                                         >
                                             <TrashIcon />
                                         </button>
