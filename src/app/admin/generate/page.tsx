@@ -50,6 +50,18 @@ const DownloadIcon = () => (
     </svg>
 );
 
+const DatabaseIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0 0 18 0V5" /><path d="M3 12a9 3 0 0 0 18 0" />
+    </svg>
+);
+
+const ExternalLinkIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" x2="21" y1="14" y2="3" />
+    </svg>
+);
+
 interface GeneratedSerial {
     serial_key: string;
     serial_hash: string;
@@ -61,9 +73,10 @@ export default function GeneratePage() {
     const [selectedProduct, setSelectedProduct] = useState('');
     const [count, setCount] = useState(10);
     const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
     const [result, setResult] = useState<{
         product: string;
-        batchId: string;
         count: number;
         serials: GeneratedSerial[];
     } | null>(null);
@@ -71,11 +84,13 @@ export default function GeneratePage() {
     const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
     const [copiedAll, setCopiedAll] = useState(false);
 
+    // Step 1: Generate preview
     const handleGenerate = async () => {
         if (!selectedProduct) return;
         setLoading(true);
         setError('');
         setResult(null);
+        setSaved(false);
 
         try {
             const res = await fetch('/api/admin/generate', {
@@ -95,6 +110,37 @@ export default function GeneratePage() {
             setError('Connection error');
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Step 2: Save to database
+    const handleSave = async () => {
+        if (!result) return;
+        setSaving(true);
+        setError('');
+
+        try {
+            const res = await fetch('/api/admin/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    productSlug: selectedProduct,
+                    action: 'save',
+                    serials: result.serials,
+                }),
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                setError(data.error || 'Failed to save');
+                return;
+            }
+
+            setSaved(true);
+        } catch {
+            setError('Connection error');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -130,7 +176,7 @@ export default function GeneratePage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `serials-${result.batchId}.csv`;
+        a.download = `serials-${selectedProduct}-${Date.now()}.csv`;
         a.click();
         URL.revokeObjectURL(url);
     };
@@ -148,13 +194,13 @@ export default function GeneratePage() {
             {/* Generator Form */}
             <div className="bg-bg-card rounded-xl border border-border p-5 sm:p-6 shadow-[var(--shadow)] space-y-5 animate-slide-up">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Product Select */}
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-fg">{t('generate.product')}</label>
                         <select
                             value={selectedProduct}
-                            onChange={(e) => setSelectedProduct(e.target.value)}
-                            className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 text-sm cursor-pointer transition-all hover:bg-bg-secondary"
+                            onChange={(e) => { setSelectedProduct(e.target.value); setResult(null); setSaved(false); }}
+                            disabled={saving}
+                            className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 text-sm cursor-pointer transition-all hover:bg-bg-secondary disabled:opacity-50"
                         >
                             <option value="">{t('generate.selectProduct')}</option>
                             {PRODUCTS.map(p => (
@@ -163,13 +209,13 @@ export default function GeneratePage() {
                         </select>
                     </div>
 
-                    {/* Count Select */}
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-fg">{t('generate.count')}</label>
                         <select
                             value={count}
-                            onChange={(e) => setCount(parseInt(e.target.value))}
-                            className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 text-sm cursor-pointer transition-all hover:bg-bg-secondary"
+                            onChange={(e) => { setCount(parseInt(e.target.value)); setResult(null); setSaved(false); }}
+                            disabled={saving}
+                            className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 text-sm cursor-pointer transition-all hover:bg-bg-secondary disabled:opacity-50"
                         >
                             {COUNT_OPTIONS.map(n => (
                                 <option key={n} value={n}>{n} serial</option>
@@ -178,10 +224,9 @@ export default function GeneratePage() {
                     </div>
                 </div>
 
-                {/* Generate Button */}
                 <button
                     onClick={handleGenerate}
-                    disabled={!selectedProduct || loading}
+                    disabled={!selectedProduct || loading || saving}
                     className="w-full sm:w-auto px-6 py-3 bg-accent text-accent-fg font-semibold rounded-xl cursor-pointer hover:opacity-85 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[var(--shadow)]"
                 >
                     {loading ? (
@@ -203,51 +248,77 @@ export default function GeneratePage() {
                 )}
             </div>
 
-            {/* Results */}
+            {/* Results (Preview) */}
             {result && (
                 <div className="space-y-4 animate-slide-up">
-                    {/* Result Header */}
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <div>
-                            <p className="text-emerald-600 dark:text-emerald-400 font-semibold text-sm">
-                                {t('generate.success')}
-                            </p>
-                            <p className="text-fg-muted text-xs mt-0.5">
-                                {result.product} · {result.count} serial · {result.batchId}
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={copyAllSerials}
-                                className="px-3 py-2 bg-bg-card border border-border rounded-lg text-xs font-medium text-fg cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 flex items-center gap-1.5"
-                            >
-                                {copiedAll ? <CheckIcon /> : <CopyIcon />}
-                                {copiedAll ? t('generate.copied') : t('generate.copyAll')}
-                            </button>
-                            <button
-                                onClick={copyAllWithHash}
-                                className="px-3 py-2 bg-bg-card border border-border rounded-lg text-xs font-medium text-fg cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 flex items-center gap-1.5"
-                            >
-                                <CopyIcon /> {t('generate.copyHash')}
-                            </button>
-                            <button
-                                onClick={downloadCSV}
-                                className="px-3 py-2 bg-bg-card border border-border rounded-lg text-xs font-medium text-fg cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 flex items-center gap-1.5"
-                            >
-                                <DownloadIcon /> CSV
-                            </button>
+                    {/* Status Banner */}
+                    {saved ? (
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-fade-in">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-emerald-500/20 rounded-lg text-emerald-500">
+                                    <CheckIcon />
+                                </div>
+                                <div>
+                                    <p className="text-emerald-600 dark:text-emerald-400 font-semibold text-sm">
+                                        {t('generate.saved')}
+                                    </p>
+                                    <p className="text-fg-muted text-xs mt-0.5">
+                                        {result.product} · {result.count} serial
+                                    </p>
+                                </div>
+                            </div>
                             <button
                                 onClick={() => router.push(PRODUCT_ROUTES[selectedProduct] || '/admin')}
-                                className="px-3 py-2 bg-accent text-accent-fg rounded-lg text-xs font-semibold cursor-pointer hover:opacity-85 transition-all active:scale-95 flex items-center gap-1.5"
+                                className="px-4 py-2.5 bg-accent text-accent-fg rounded-xl text-sm font-semibold cursor-pointer hover:opacity-85 transition-all active:scale-95 flex items-center gap-2"
                             >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" x2="21" y1="14" y2="3" /></svg>
-                                {t('generate.viewDB')}
+                                <ExternalLinkIcon /> {t('generate.viewDB')}
                             </button>
                         </div>
+                    ) : (
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-fade-in">
+                            <div>
+                                <p className="text-amber-600 dark:text-amber-400 font-semibold text-sm">
+                                    {t('generate.preview')}
+                                </p>
+                                <p className="text-fg-muted text-xs mt-0.5">
+                                    {result.product} · {result.count} serial · {t('generate.previewDesc')}
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleSave}
+                                disabled={saving}
+                                className="px-5 py-2.5 bg-emerald-500 text-white rounded-xl text-sm font-semibold cursor-pointer hover:bg-emerald-600 transition-all active:scale-95 flex items-center gap-2 shadow-[var(--shadow)] disabled:opacity-50"
+                            >
+                                {saving ? (
+                                    <>
+                                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        {t('generate.savingDB')}
+                                    </>
+                                ) : (
+                                    <>
+                                        <DatabaseIcon /> {t('generate.saveDB')}
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Copy/Download Actions */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <button onClick={copyAllSerials} className="px-3 py-2 bg-bg-card border border-border rounded-lg text-xs font-medium text-fg cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 flex items-center gap-1.5">
+                            {copiedAll ? <CheckIcon /> : <CopyIcon />}
+                            {copiedAll ? t('generate.copied') : t('generate.copyAll')}
+                        </button>
+                        <button onClick={copyAllWithHash} className="px-3 py-2 bg-bg-card border border-border rounded-lg text-xs font-medium text-fg cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 flex items-center gap-1.5">
+                            <CopyIcon /> {t('generate.copyHash')}
+                        </button>
+                        <button onClick={downloadCSV} className="px-3 py-2 bg-bg-card border border-border rounded-lg text-xs font-medium text-fg cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 flex items-center gap-1.5">
+                            <DownloadIcon /> CSV
+                        </button>
                     </div>
 
                     {/* Serial Table */}
-                    <div className="overflow-auto max-h-[calc(100vh-400px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)]">
+                    <div className="overflow-auto max-h-[calc(100vh-420px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)]">
                         <table className="w-full">
                             <thead className="sticky top-0 bg-bg-card z-10 border-b border-border">
                                 <tr className="text-left text-fg-muted text-xs uppercase tracking-wider">

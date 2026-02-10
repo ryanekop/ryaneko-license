@@ -14,8 +14,48 @@ function hashSerial(serial: string): string {
 
 export async function POST(request: NextRequest) {
     try {
-        const { productSlug, count } = await request.json();
+        const { productSlug, count, action, serials: serialsToSave } = await request.json();
 
+        // === STEP 2: SAVE to database ===
+        if (action === 'save' && serialsToSave) {
+            const { data: product } = await supabaseAdmin
+                .from('products')
+                .select('id, name')
+                .eq('slug', productSlug)
+                .single();
+
+            if (!product) {
+                return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+            }
+
+            const batchId = `BATCH-${Date.now()}`;
+            const rows = serialsToSave.map((s: { serial_key: string; serial_hash: string }) => ({
+                serial_key: s.serial_key,
+                serial_hash: s.serial_hash,
+                product_id: product.id,
+                status: 'available',
+                batch_info: batchId,
+            }));
+
+            const { data: inserted, error: insertError } = await supabaseAdmin
+                .from('licenses')
+                .insert(rows)
+                .select('serial_key, serial_hash');
+
+            if (insertError) {
+                return NextResponse.json({ error: insertError.message }, { status: 500 });
+            }
+
+            return NextResponse.json({
+                success: true,
+                saved: true,
+                product: product.name,
+                batchId,
+                count: inserted?.length || 0,
+            });
+        }
+
+        // === STEP 1: GENERATE preview (no DB insert) ===
         if (!productSlug || !count || count < 1 || count > 100) {
             return NextResponse.json(
                 { error: 'Invalid parameters. Product required, count 1-100.' },
@@ -23,42 +63,36 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Get product ID from slug
-        const { data: product, error: productError } = await supabaseAdmin
+        const { data: product } = await supabaseAdmin
             .from('products')
             .select('id, name')
             .eq('slug', productSlug)
             .single();
 
-        if (productError || !product) {
-            return NextResponse.json(
-                { error: 'Product not found' },
-                { status: 404 }
-            );
+        if (!product) {
+            return NextResponse.json({ error: 'Product not found' }, { status: 404 });
         }
 
-        // Get all existing serial keys to avoid duplicates
+        // Get existing keys for uniqueness check
         const { data: existing } = await supabaseAdmin
             .from('licenses')
             .select('serial_key');
 
         const existingKeys = new Set((existing || []).map(l => l.serial_key));
 
-        // Generate unique serials
-        const batchId = `BATCH-${Date.now()}`;
-        const serials: { serial_key: string; serial_hash: string; product_id: string; status: string; batch_info: string }[] = [];
+        // Generate unique serials (preview only)
+        const serials: { serial_key: string; serial_hash: string }[] = [];
 
         for (let i = 0; i < count; i++) {
             let serial: string;
             let attempts = 0;
 
-            // Ensure uniqueness
             do {
                 serial = generateSerial();
                 attempts++;
                 if (attempts > 100) {
                     return NextResponse.json(
-                        { error: 'Failed to generate unique serials after many attempts' },
+                        { error: 'Failed to generate unique serials' },
                         { status: 500 }
                     );
                 }
@@ -67,37 +101,18 @@ export async function POST(request: NextRequest) {
             serials.push({
                 serial_key: serial,
                 serial_hash: hashSerial(serial),
-                product_id: product.id,
-                status: 'available',
-                batch_info: batchId,
             });
-        }
-
-        // Insert all serials
-        const { data: inserted, error: insertError } = await supabaseAdmin
-            .from('licenses')
-            .insert(serials)
-            .select('serial_key, serial_hash');
-
-        if (insertError) {
-            return NextResponse.json(
-                { error: insertError.message },
-                { status: 500 }
-            );
         }
 
         return NextResponse.json({
             success: true,
+            saved: false,
             product: product.name,
-            batchId,
-            count: inserted?.length || 0,
-            serials: inserted || [],
+            count: serials.length,
+            serials,
         });
     } catch (error) {
         console.error('Generate error:', error);
-        return NextResponse.json(
-            { error: 'Internal server error' },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }
