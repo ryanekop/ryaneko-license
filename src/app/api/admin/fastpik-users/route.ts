@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const FASTPIK_API = 'https://fastpik.ryanekoapp.web.id';
-const ADMIN_SECRET = process.env.FASTPIK_ADMIN_SECRET || 'fastpik-ryan-2024-secret';
+const ADMIN_SECRET = process.env.ADMIN_PASSWORD || '';
 
 // Proxy GET - list users
 export async function GET() {
