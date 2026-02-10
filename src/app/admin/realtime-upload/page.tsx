@@ -5,6 +5,7 @@ export default function RealtimeUploadPage() {
         <LicenseList
             productSlug="realtime-upload-pro"
             productName="Realtime Upload Pro"
+            productEmoji="📤"
         />
     );
 }

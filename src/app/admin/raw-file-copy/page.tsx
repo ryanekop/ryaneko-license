@@ -5,6 +5,7 @@ export default function RawFileCopyPage() {
         <LicenseList
             productSlug="raw-file-copy-tool"
             productName="RAW File Copy Tool"
+            productEmoji="📂"
         />
     );
 }

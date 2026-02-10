@@ -5,6 +5,7 @@ export default function PhotoSplitPage() {
         <LicenseList
             productSlug="photo-split-express"
             productName="Photo Split Express"
+            productEmoji="✂️"
         />
     );
 }
