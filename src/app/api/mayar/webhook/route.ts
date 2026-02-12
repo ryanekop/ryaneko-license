@@ -454,13 +454,15 @@ async function handleLicensePurchase(
     );
 
     // Telegram notification
+    const serialList = reservedLicenses.map((l, i) => `  ${i + 1}. <code>${l.serial_key}</code>`).join('\n');
     await notifyPurchase(
         `<b>New Purchase!</b>\n\n` +
         `📦 ${product.name}\n` +
         `👤 ${customerName}\n` +
         `📧 ${customerEmail}\n` +
-        `🔑 ${reservedLicenses.length} license(s)\n` +
-        `${includesPlugin || isBundle ? '🔌 + Plugin' : ''}`
+        `🔑 ${reservedLicenses.length} license(s)\n\n` +
+        `<b>Serial Keys:</b>\n${serialList}\n` +
+        `${includesPlugin || isBundle ? '\n🔌 + Plugin' : ''}`
     );
 
     return jsonResponse('Success', `Assigned ${reservedLicenses.length} license(s)`);

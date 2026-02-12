@@ -122,9 +122,12 @@ export async function POST(request: NextRequest) {
         await notifyActivation(
             `<b>License Activated</b>\n\n` +
             `📦 ${licenseData.product?.name || 'Unknown'}\n` +
-            `🔑 ${serial_key.substring(0, 8)}...\n` +
+            `🔑 <code>${serial_key}</code>\n` +
             `💻 ${device_type}\n` +
-            `👤 ${licenseData.customer_name || 'Unknown'}`
+            `👤 ${licenseData.customer_name || 'Unknown'}\n` +
+            `📧 ${licenseData.customer_email || '-'}\n` +
+            `🖥 OS: ${os_version || '-'}\n` +
+            `🌐 IP: ${ip}`
         );
 
         return NextResponse.json<ActivationResponse>({
