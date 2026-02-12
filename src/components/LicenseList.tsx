@@ -374,7 +374,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
 
             {/* === DESKTOP TABLE === */}
             <div className="hidden md:block overflow-auto max-h-[calc(100vh-280px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)] animate-slide-up stagger-1" style={{ opacity: 0 }}>
-                <table className="w-full min-w-[1050px]">
+                <table className="w-full min-w-[1200px]">
                     <thead className="sticky top-0 bg-bg-card z-10 border-b border-border">
                         <tr className="text-left text-fg-muted text-xs uppercase tracking-wider">
                             <th className="px-4 py-3 font-medium">No.</th>
@@ -430,7 +430,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                             <button onClick={() => openEditTable(license)} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-500 text-white rounded-lg cursor-pointer hover:bg-indigo-600 hover:shadow-md transition-all active:scale-95">{Icons.editTable} {t('action.editTable')}</button>
                                             <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 hover:shadow-md transition-all active:scale-95">{Icons.edit} {t('action.editDevice')}</button>
                                             <button onClick={() => setResetDialog(license)} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 hover:shadow-md transition-all active:scale-95">{Icons.reset} {t('action.reset')}</button>
-                                            <button onClick={() => setDeleteDialog(license)} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold bg-danger text-white rounded-lg cursor-pointer hover:bg-red-600 hover:shadow-md transition-all active:scale-95">{Icons.trash}</button>
+                                            <button onClick={() => setDeleteDialog(license)} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-danger text-white rounded-lg cursor-pointer hover:bg-red-600 hover:shadow-md transition-all active:scale-95">{Icons.trash} {t('action.delete')}</button>
                                         </div>
                                     </td>
                                 </tr>

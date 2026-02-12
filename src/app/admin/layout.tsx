@@ -204,7 +204,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     return (
         <div className="min-h-screen bg-bg">
             <header className="bg-bg-card border-b border-border sticky top-0 z-50 shadow-[var(--shadow)]">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+                <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2.5 text-fg">
                             <Link
@@ -245,7 +245,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             </header>
 
             <div className="border-b border-border bg-bg-card">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6">
+                <div className="max-w-[1600px] mx-auto px-4 sm:px-6">
                     <nav className="flex space-x-1 overflow-x-auto py-2">
                         {TABS.map((tab) => {
                             const isActive = pathname.startsWith(tab.href);
@@ -267,7 +267,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 </div>
             </div>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 animate-fade-in">
+            <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 animate-fade-in">
                 {children}
             </main>
         </div>
