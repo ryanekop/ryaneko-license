@@ -62,11 +62,13 @@ export async function POST(request: NextRequest) {
             // Alert for suspicious activity (multiple devices trying same key)
             await notifyAlert(
                 `<b>⚠️ VERIFICATION FAILED</b>\n\n` +
-                `Serial: ${serial_key.substring(0, 8)}...\n` +
-                `Product: ${licenseData.product?.name || 'Unknown'}\n` +
-                `Expected: ${licenseData.device_id?.substring(0, 8)}...\n` +
-                `Got: ${device_id.substring(0, 8)}...\n` +
-                `IP: ${ip}`
+                `🔑 Serial: <code>${serial_key}</code>\n` +
+                `📦 Product: ${licenseData.product?.name || 'Unknown'}\n` +
+                `👤 Name: ${licenseData.customer_name || 'Unknown'}\n` +
+                `📧 Email: ${licenseData.customer_email || '-'}\n` +
+                `🖥 Expected Device: <code>${licenseData.device_id || '-'}</code>\n` +
+                `🆕 Got Device: <code>${device_id}</code>\n` +
+                `🌐 IP: ${ip}`
             );
 
             return NextResponse.json<VerifyResponse>(
