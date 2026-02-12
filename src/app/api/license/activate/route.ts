@@ -59,12 +59,15 @@ export async function POST(request: NextRequest) {
 
                 await notifyAlert(
                     `<b>⚠️ ACTIVATION BLOCKED</b>\n\n` +
-                    `Serial: ${serial_key.substring(0, 8)}...\n` +
-                    `Product: ${licenseData.product?.name || 'Unknown'}\n` +
-                    `Existing Device: ${licenseData.device_id.substring(0, 8)}...\n` +
-                    `New Device: ${device_id.substring(0, 8)}...\n` +
-                    `Type: ${device_type}\n` +
-                    `IP: ${ip}`
+                    `🔑 Serial: <code>${serial_key}</code>\n` +
+                    `📦 Product: ${licenseData.product?.name || 'Unknown'}\n` +
+                    `👤 Name: ${licenseData.customer_name || 'Unknown'}\n` +
+                    `📧 Email: ${licenseData.customer_email || '-'}\n` +
+                    `🖥 Existing Device: <code>${licenseData.device_id}</code>\n` +
+                    `🆕 New Device: <code>${device_id}</code>\n` +
+                    `💻 Type: ${device_type}\n` +
+                    `🖥 OS: ${os_version || '-'}\n` +
+                    `🌐 IP: ${ip}`
                 );
 
                 return NextResponse.json<ActivationResponse>(
