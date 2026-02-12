@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getFastpikSupabase } from '@/lib/fastpik-supabase';
 
 // Direct connection to Fastpik Supabase (bypasses Vercel Attack Challenge)
-const fastpikSupabase = createClient(
-    process.env.FASTPIK_SUPABASE_URL!,
-    process.env.FASTPIK_SUPABASE_SERVICE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-);
+const fastpikSupabase = getFastpikSupabase();
 
 // GET - list users
 export async function GET() {

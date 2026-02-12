@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getFastpikSupabase } from '@/lib/fastpik-supabase';
 import { notifyPurchase, notifyAlert } from '@/lib/telegram';
 import { generateHash } from '@/lib/crypto';
 import type {
@@ -15,7 +16,11 @@ function jsonResponse(status: string, message: string, statusCode = 200) {
     return NextResponse.json({ status, message }, { status: statusCode });
 }
 
-// Detect product from product name
+// =============================================
+// PRODUCT DETECTION
+// =============================================
+
+// Detect product from product name (for software licenses)
 async function detectProduct(productName: string): Promise<Product | null> {
     const { data: products } = await supabaseAdmin
         .from('products')
@@ -36,6 +41,178 @@ async function detectProduct(productName: string): Promise<Product | null> {
 
     return null;
 }
+
+// Check if product name matches Fastpik
+function isFastpikProduct(productName: string): boolean {
+    const lowerName = productName.toLowerCase();
+    const fastpikKeywords = ['fastpik', 'fast pik', 'fast-pik'];
+    return fastpikKeywords.some(keyword => lowerName.includes(keyword));
+}
+
+// =============================================
+// FASTPIK SUBSCRIPTION HANDLER
+// =============================================
+
+async function handleFastpikSubscription(
+    orderData: MayarOrderData,
+    payload: MayarWebhookPayload
+): Promise<NextResponse> {
+    const fastpikSupabase = getFastpikSupabase();
+    const FASTPIK_SITE_URL = process.env.FASTPIK_SITE_URL || 'https://fastpik.ryanekoapp.web.id';
+
+    const data = payload.data || payload;
+    const rawStatus = (data as any).status || (payload as any).status;
+
+    // Extract customer info
+    const customer = (data as any).customer || (data as any).customerDetail || (payload as any).customer || {};
+    const email =
+        orderData.customerEmail ||
+        orderData.customer_email ||
+        (data as any).customerEmail ||
+        (payload as any).customerEmail ||
+        customer.email ||
+        (data as any).email ||
+        (payload as any).email;
+
+    const name =
+        orderData.customerName ||
+        orderData.customer_name ||
+        (data as any).customerName ||
+        (payload as any).customerName ||
+        customer.name ||
+        customer.fullName ||
+        (data as any).name ||
+        (payload as any).name ||
+        'User';
+
+    const amount = (data as any).amount || (data as any).totalAmount || (data as any).gross_amount || (payload as any).amount || 0;
+    const transactionId = orderData.id || (data as any).transactionId || (payload as any).id || `TRX-${Date.now()}`;
+
+    console.log(`[Fastpik Webhook] Email: ${email}, Name: ${name}, Status: ${rawStatus}, Amount: ${amount}`);
+
+    if (!email) {
+        console.error('[Fastpik Webhook] No email found in payload');
+        return jsonResponse('Error', 'No email provided', 400);
+    }
+
+    // Check payment status
+    const statusStr = rawStatus?.toString().toLowerCase();
+    const isSuccess = rawStatus === true ||
+        ['success', 'settlement', 'paid', 'successful'].includes(statusStr);
+
+    if (!isSuccess) {
+        return jsonResponse('Success', `Ignored status: ${rawStatus}`);
+    }
+
+    // Determine plan from amount
+    let planDurationDays = 0;
+    let planTier = 'free';
+    let isLifetime = false;
+    const amountNum = Number(amount);
+
+    if (amountNum >= 14000 && amountNum <= 16000) {
+        planTier = 'pro_monthly';
+        planDurationDays = 30;
+    } else if (amountNum >= 38000 && amountNum <= 40000) {
+        planTier = 'pro_quarterly';
+        planDurationDays = 90;
+    } else if (amountNum >= 128000 && amountNum <= 130000) {
+        planTier = 'pro_yearly';
+        planDurationDays = 365;
+    } else if (amountNum >= 348000 && amountNum <= 350000) {
+        planTier = 'lifetime';
+        isLifetime = true;
+    } else {
+        console.log(`[Fastpik Webhook] Unknown amount: ${amountNum}`);
+        return jsonResponse('Success', `Unknown amount: ${amountNum}`);
+    }
+
+    // Find or Create User in Fastpik Supabase
+    let userId: string | undefined;
+    const { data: newUser, error: createError } = await fastpikSupabase.auth.admin.createUser({
+        email: email,
+        email_confirm: true,
+        user_metadata: { full_name: name }
+    });
+
+    if (createError) {
+        // User already exists — find them
+        const { data: { users: allUsers } } = await fastpikSupabase.auth.admin.listUsers({ perPage: 1000 });
+        const found = allUsers?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        if (found) {
+            userId = found.id;
+            // Send magic link for existing user
+            try {
+                await fastpikSupabase.auth.signInWithOtp({
+                    email: email,
+                    options: {
+                        emailRedirectTo: `${FASTPIK_SITE_URL}/id/auth/callback?next=/id/dashboard`
+                    }
+                });
+            } catch (e) {
+                console.error('[Fastpik Webhook] Failed to send OTP:', e);
+            }
+        }
+    } else {
+        userId = newUser.user.id;
+        // Send password reset for new user
+        try {
+            await fastpikSupabase.auth.resetPasswordForEmail(email, {
+                redirectTo: `${FASTPIK_SITE_URL}/id/auth/callback?type=recovery`
+            });
+        } catch (e) {
+            console.error('[Fastpik Webhook] Failed to send password reset:', e);
+        }
+    }
+
+    if (!userId) {
+        return jsonResponse('Error', 'User ID error', 500);
+    }
+
+    // Calculate dates
+    const startDate = new Date();
+    let endDate = null;
+    if (!isLifetime) {
+        const end = new Date(startDate);
+        end.setDate(end.getDate() + planDurationDays);
+        endDate = end.toISOString();
+    }
+
+    // Upsert subscription
+    const { error: upsertError } = await fastpikSupabase
+        .from('subscriptions')
+        .upsert({
+            user_id: userId,
+            tier: planTier,
+            status: 'active',
+            start_date: startDate.toISOString(),
+            end_date: endDate,
+            mayar_transaction_id: transactionId,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+    if (upsertError) {
+        console.error('[Fastpik Webhook] Subscription upsert error:', upsertError);
+        throw upsertError;
+    }
+
+    // Telegram notification
+    await notifyPurchase(
+        `<b>Fastpik Purchase!</b>\n\n` +
+        `📦 ${planTier}\n` +
+        `👤 ${name}\n` +
+        `📧 ${email}\n` +
+        `💰 Rp ${amountNum.toLocaleString('id-ID')}\n` +
+        `🔑 Transaction: ${transactionId}`
+    );
+
+    console.log(`[Fastpik Webhook] ✅ Subscription activated: ${email} -> ${planTier}`);
+    return jsonResponse('Success', `Fastpik subscription activated: ${planTier}`);
+}
+
+// =============================================
+// SOFTWARE LICENSE HANDLER (EXISTING LOGIC)
+// =============================================
 
 // Parse addons for extra licenses and plugin
 function parseAddons(addons: unknown[]): { extraLicenses: number; includesPlugin: boolean } {
@@ -159,10 +336,110 @@ async function sendLicenseEmail(
     return true;
 }
 
+async function handleLicensePurchase(
+    orderData: MayarOrderData,
+    payload: MayarWebhookPayload,
+    product: Product
+): Promise<NextResponse> {
+    const customerEmail = orderData.customerEmail || orderData.customer_email;
+    const customerName = orderData.customerName || orderData.customer_name || 'Customer';
+    const productName = orderData.productName || orderData.product_name || '';
+    const addons = orderData.addOn || orderData.addons || orderData.items || [];
+
+    console.log(`Detected Product: ${product.name} (${product.slug})`);
+
+    // Check for plugin-only purchase (skip license assignment)
+    const lowerProductName = productName.toLowerCase();
+    const isBundle = lowerProductName.includes('bundle');
+    const isPluginOnly = lowerProductName.includes('plugin') && !isBundle;
+
+    if (isPluginOnly) {
+        console.log('Plugin-only purchase, handled by Mayar');
+        return jsonResponse('Success', 'Plugin purchase - no license needed');
+    }
+
+    // Parse addons
+    const { extraLicenses, includesPlugin } = parseAddons(addons);
+    const totalLicenses = 1 + extraLicenses;
+
+    console.log(`Total Licenses Needed: ${totalLicenses}, Includes Plugin: ${includesPlugin || isBundle}`);
+
+    // Reserve licenses
+    const reservedLicenses = await reserveLicenses(
+        product.id,
+        totalLicenses,
+        customerName,
+        customerEmail!,
+        orderData.id
+    );
+
+    console.log(`Reserved ${reservedLicenses.length}/${totalLicenses} licenses`);
+
+    // Out of stock alert
+    if (reservedLicenses.length < totalLicenses) {
+        await notifyAlert(
+            `<b>⚠️ LICENSE SHORTAGE</b>\n\n` +
+            `Product: ${product.name}\n` +
+            `Order: ${orderData.id}\n` +
+            `Customer: ${customerEmail}\n` +
+            `Needed: ${totalLicenses}\n` +
+            `Available: ${reservedLicenses.length}`
+        );
+    }
+
+    if (reservedLicenses.length === 0) {
+        return jsonResponse('Error', 'Out of stock - Admin notified', 500);
+    }
+
+    // Record purchase
+    const { error: purchaseError } = await supabaseAdmin
+        .from('purchases')
+        .insert({
+            order_id: orderData.id,
+            product_id: product.id,
+            customer_name: customerName,
+            customer_email: customerEmail,
+            license_count: totalLicenses,
+            includes_plugin: includesPlugin || isBundle,
+            addons: addons,
+            raw_payload: payload,
+            licenses_assigned: reservedLicenses.map(l => l.id),
+        });
+
+    if (purchaseError) {
+        console.error('Failed to record purchase:', purchaseError);
+    }
+
+    // Send email
+    await sendLicenseEmail(
+        customerEmail!,
+        customerName,
+        reservedLicenses,
+        product,
+        includesPlugin || isBundle
+    );
+
+    // Telegram notification
+    await notifyPurchase(
+        `<b>New Purchase!</b>\n\n` +
+        `📦 ${product.name}\n` +
+        `👤 ${customerName}\n` +
+        `📧 ${customerEmail}\n` +
+        `🔑 ${reservedLicenses.length} license(s)\n` +
+        `${includesPlugin || isBundle ? '🔌 + Plugin' : ''}`
+    );
+
+    return jsonResponse('Success', `Assigned ${reservedLicenses.length} license(s)`);
+}
+
+// =============================================
+// MAIN WEBHOOK ROUTER
+// =============================================
+
 export async function POST(request: NextRequest) {
     try {
         const rawBody = await request.text();
-        console.log('Received Mayar Webhook:', rawBody);
+        console.log('[Mayar Webhook] Received:', rawBody);
 
         let payload: MayarWebhookPayload;
         try {
@@ -175,6 +452,13 @@ export async function POST(request: NextRequest) {
         if (payload.event === 'testing' || payload.event === 'test') {
             console.log('Test webhook received');
             return jsonResponse('Success', 'Webhook URL verified');
+        }
+
+        // Only process payment.received events
+        const eventType = payload.event || '';
+        if (eventType && eventType !== 'payment.received') {
+            console.log(`[Mayar Webhook] Ignoring event: ${eventType}`);
+            return jsonResponse('Success', `Ignored event: ${eventType}`);
         }
 
         // Get order data (either from data wrapper or direct)
@@ -196,105 +480,38 @@ export async function POST(request: NextRequest) {
             return jsonResponse('Error', 'Missing customer email', 400);
         }
 
-        const customerName = orderData.customerName || orderData.customer_name || 'Customer';
         const productName = orderData.productName || orderData.product_name || '';
-        const addons = orderData.addOn || orderData.addons || orderData.items || [];
 
-        // Detect product
+        // ========================================
+        // ROUTING: Fastpik vs Software License
+        // ========================================
+
+        // 1. Check if this is a Fastpik subscription purchase
+        if (isFastpikProduct(productName)) {
+            console.log(`[Mayar Webhook] ➡️ Routing to Fastpik handler for: ${productName}`);
+            return await handleFastpikSubscription(orderData, payload);
+        }
+
+        // 2. Check if this is a software license purchase
         const product = await detectProduct(productName);
-        if (!product) {
-            console.log(`Unknown product: ${productName}`);
-            // Still return success to not block webhook
-            return jsonResponse('Success', `Product not managed: ${productName}`);
+        if (product) {
+            console.log(`[Mayar Webhook] ➡️ Routing to License handler for: ${productName}`);
+            return await handleLicensePurchase(orderData, payload, product);
         }
 
-        console.log(`Detected Product: ${product.name} (${product.slug})`);
-
-        // Check for plugin-only purchase (skip license assignment)
-        const lowerProductName = productName.toLowerCase();
-        const isBundle = lowerProductName.includes('bundle');
-        const isPluginOnly = lowerProductName.includes('plugin') && !isBundle;
-
-        if (isPluginOnly) {
-            console.log('Plugin-only purchase, handled by Mayar');
-            return jsonResponse('Success', 'Plugin purchase - no license needed');
-        }
-
-        // Parse addons
-        const { extraLicenses, includesPlugin } = parseAddons(addons);
-        const totalLicenses = 1 + extraLicenses;
-
-        console.log(`Total Licenses Needed: ${totalLicenses}, Includes Plugin: ${includesPlugin || isBundle}`);
-
-        // Reserve licenses
-        const reservedLicenses = await reserveLicenses(
-            product.id,
-            totalLicenses,
-            customerName,
-            customerEmail,
-            orderData.id
+        // 3. Unknown product — log and return success to not block webhook
+        console.log(`[Mayar Webhook] ❓ Unknown product: ${productName}`);
+        await notifyAlert(
+            `<b>⚠️ Unknown Product in Webhook</b>\n\n` +
+            `Product: ${productName}\n` +
+            `Email: ${customerEmail}\n` +
+            `Order: ${orderData.id}`
         );
 
-        console.log(`Reserved ${reservedLicenses.length}/${totalLicenses} licenses`);
-
-        // Out of stock alert
-        if (reservedLicenses.length < totalLicenses) {
-            await notifyAlert(
-                `<b>⚠️ LICENSE SHORTAGE</b>\n\n` +
-                `Product: ${product.name}\n` +
-                `Order: ${orderData.id}\n` +
-                `Customer: ${customerEmail}\n` +
-                `Needed: ${totalLicenses}\n` +
-                `Available: ${reservedLicenses.length}`
-            );
-        }
-
-        if (reservedLicenses.length === 0) {
-            return jsonResponse('Error', 'Out of stock - Admin notified', 500);
-        }
-
-        // Record purchase
-        const { error: purchaseError } = await supabaseAdmin
-            .from('purchases')
-            .insert({
-                order_id: orderData.id,
-                product_id: product.id,
-                customer_name: customerName,
-                customer_email: customerEmail,
-                license_count: totalLicenses,
-                includes_plugin: includesPlugin || isBundle,
-                addons: addons,
-                raw_payload: payload,
-                licenses_assigned: reservedLicenses.map(l => l.id),
-            });
-
-        if (purchaseError) {
-            console.error('Failed to record purchase:', purchaseError);
-        }
-
-        // Send email
-        await sendLicenseEmail(
-            customerEmail,
-            customerName,
-            reservedLicenses,
-            product,
-            includesPlugin || isBundle
-        );
-
-        // Telegram notification
-        await notifyPurchase(
-            `<b>New Purchase!</b>\n\n` +
-            `📦 ${product.name}\n` +
-            `👤 ${customerName}\n` +
-            `📧 ${customerEmail}\n` +
-            `🔑 ${reservedLicenses.length} license(s)\n` +
-            `${includesPlugin || isBundle ? '🔌 + Plugin' : ''}`
-        );
-
-        return jsonResponse('Success', `Assigned ${reservedLicenses.length} license(s)`);
+        return jsonResponse('Success', `Product not managed: ${productName}`);
 
     } catch (error) {
-        console.error('Webhook error:', error);
+        console.error('[Mayar Webhook] Error:', error);
         return jsonResponse('Error', String(error), 500);
     }
 }
@@ -303,8 +520,8 @@ export async function POST(request: NextRequest) {
 export async function GET() {
     return NextResponse.json({
         status: 'OK',
-        message: 'Ryaneko License Webhook is running',
-        version: '1.0',
-        supportedProducts: ['raw-file-copy-tool', 'realtime-upload-pro', 'photo-split-express'],
+        message: 'Unified Mayar Webhook — Ryaneko License + Fastpik',
+        version: '2.0',
+        supportedProducts: ['raw-file-copy-tool', 'realtime-upload-pro', 'photo-split-express', 'fastpik'],
     });
 }

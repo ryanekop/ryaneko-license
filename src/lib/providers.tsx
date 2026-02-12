@@ -149,6 +149,7 @@ const translations = {
         'home.subtitle': 'License Management System',
         'home.admin': 'Admin Dashboard',
         'home.webhook': 'Webhook Status',
+        'home.webhookTest': 'Webhook Tester',
         'home.products': 'Produk yang Didukung',
     },
     en: {
@@ -258,6 +259,7 @@ const translations = {
         'home.subtitle': 'License Management System',
         'home.admin': 'Admin Dashboard',
         'home.webhook': 'Webhook Status',
+        'home.webhookTest': 'Webhook Tester',
         'home.products': 'Supported Products',
     },
 } as const;

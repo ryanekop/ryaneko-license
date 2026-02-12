@@ -76,17 +76,17 @@ export default function Home() {
           </Link>
 
           <Link
-            href="/api/mayar/webhook"
+            href="/webhook-test"
             className="px-6 py-3.5 bg-bg-card text-fg-secondary font-medium rounded-xl cursor-pointer hover:bg-bg-secondary transition-all border border-border active:scale-[0.98] flex items-center justify-center gap-2"
           >
-            <WebhookIcon /> {t('home.webhook')}
+            <WebhookIcon /> {t('home.webhookTest')}
           </Link>
         </div>
 
         <div className="text-fg-muted text-sm space-y-1 animate-slide-up stagger-2" style={{ opacity: 0 }}>
           <p>{t('home.products')}</p>
           <p className="text-fg-secondary">
-            RAW File Copy Tool · Realtime Upload Pro · Photo Split Express
+            Fastpik · RAW File Copy Tool · Realtime Upload Pro · Photo Split Express
           </p>
         </div>
       </div>

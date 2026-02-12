@@ -55,6 +55,14 @@ INSERT INTO products (name, slug, detection_keywords, download_urls, has_plugin,
   }',
   false,
   NULL
+),
+(
+  'Fastpik',
+  'fastpik',
+  ARRAY['fastpik', 'fast pik', 'fast-pik'],
+  '{}',
+  false,
+  NULL
 );
 
 -- =============================================
