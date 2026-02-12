@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ryaneko License Manager",
-  description: "License Management System for Ryaneko Apps",
+  title: "Ryan Eko License Manager",
+  description: "License Management System for Ryan Eko Apps",
 };
 
 export default function RootLayout({

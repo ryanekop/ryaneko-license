@@ -47,6 +47,9 @@ const Icons = {
     edit: (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
     ),
+    editTable: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" /></svg>
+    ),
     reset: (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
     ),
@@ -70,6 +73,9 @@ const Icons = {
     ),
     monitor: (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></svg>
+    ),
+    fingerprint: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4" /><path d="M14 13.12c0 2.38 0 6.38-1 8.88" /><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02" /><path d="M2 12a10 10 0 0 1 18-6" /><path d="M2 16h.01" /><path d="M21.8 16c.2-2 .131-5.354 0-6" /><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2" /><path d="M8.65 22c.21-.66.45-1.32.57-2" /><path d="M9 6.8a6 6 0 0 1 9 5.2v2" /></svg>
     ),
     calendar: (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v4" /><path d="M16 2v4" /><rect width="18" height="18" x="3" y="4" rx="2" /><path d="M3 10h18" /></svg>
@@ -130,6 +136,9 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [licenses, setLicenses] = useState<License[]>([]);
     const [loading, setLoading] = useState(true);
     const [total, setTotal] = useState(0);
+    const [totalAll, setTotalAll] = useState(0);
+    const [availableCount, setAvailableCount] = useState(0);
+    const [usedCount, setUsedCount] = useState(0);
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -139,8 +148,13 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [changeDialog, setChangeDialog] = useState<License | null>(null);
     const [resetDialog, setResetDialog] = useState<License | null>(null);
     const [deleteDialog, setDeleteDialog] = useState<License | null>(null);
+    const [editTableDialog, setEditTableDialog] = useState<License | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
     const [newPlatform, setNewPlatform] = useState('');
+    const [editSerial, setEditSerial] = useState('');
+    const [editName, setEditName] = useState('');
+    const [editEmail, setEditEmail] = useState('');
+    const [editDeviceId, setEditDeviceId] = useState('');
 
     const fetchLicenses = useCallback(async () => {
         setLoading(true);
@@ -160,6 +174,9 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
 
             setLicenses(data.licenses || []);
             setTotal(data.total || 0);
+            setTotalAll(data.totalAll || 0);
+            setAvailableCount(data.availableCount || 0);
+            setUsedCount(data.usedCount || 0);
         } catch (error) {
             console.error('Failed to fetch licenses:', error);
         } finally {
@@ -219,6 +236,36 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
         }
     };
 
+    const handleEditTable = async () => {
+        if (!editTableDialog) return;
+        setActionLoading(true);
+        try {
+            await fetch('/api/admin/licenses', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editTableDialog.id,
+                    serial_key: editSerial,
+                    customer_name: editName || null,
+                    customer_email: editEmail || null,
+                    device_id: editDeviceId || null,
+                }),
+            });
+            setEditTableDialog(null);
+            fetchLicenses();
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const openEditTable = (license: License) => {
+        setEditTableDialog(license);
+        setEditSerial(license.serial_key);
+        setEditName(license.customer_name || '');
+        setEditEmail(license.customer_email || '');
+        setEditDeviceId(license.device_id || '');
+    };
+
     const getStatusBadge = (status: string) => {
         switch (status) {
             case 'available':
@@ -256,9 +303,6 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
         });
     };
 
-    const availableCount = licenses.filter(l => l.status === 'available').length;
-    const usedCount = licenses.filter(l => l.status === 'used').length;
-
     return (
         <div className="space-y-4 sm:space-y-5">
             {/* Header */}
@@ -269,7 +313,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                             {productIcon} {productName}
                         </h2>
                         <div className="flex items-center gap-3 sm:gap-4 mt-2 text-xs sm:text-sm text-fg-muted">
-                            <span className="flex items-center gap-1.5">{Icons.chart} {t('list.total')}: <b className="text-fg">{total}</b></span>
+                            <span className="flex items-center gap-1.5">{Icons.chart} {t('list.total')}: <b className="text-fg">{totalAll}</b></span>
                             <span>{t('list.available')}: <b className="text-emerald-600">{availableCount}</b></span>
                             <span>{t('list.used')}: <b className="text-amber-600">{usedCount}</b></span>
                         </div>
@@ -330,7 +374,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
 
             {/* === DESKTOP TABLE === */}
             <div className="hidden md:block overflow-auto max-h-[calc(100vh-280px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)] animate-slide-up stagger-1" style={{ opacity: 0 }}>
-                <table className="w-full min-w-[900px]">
+                <table className="w-full min-w-[1050px]">
                     <thead className="sticky top-0 bg-bg-card z-10 border-b border-border">
                         <tr className="text-left text-fg-muted text-xs uppercase tracking-wider">
                             <th className="px-4 py-3 font-medium">No.</th>
@@ -339,6 +383,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.user} {t('list.name')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.mail} {t('list.email')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.monitor} {t('list.device')}</span></th>
+                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.fingerprint} {t('list.deviceId')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.calendar} {t('list.activated')}</span></th>
                             <th className="px-4 py-3 font-medium text-right">{t('list.actions')}</th>
                         </tr>
@@ -353,13 +398,14 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-28" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-36" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-16" /></td>
+                                    <td className="px-4 py-3"><div className="skeleton h-4 w-24" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-20" /></td>
-                                    <td className="px-4 py-3"><div className="skeleton h-8 w-36 ml-auto" /></td>
+                                    <td className="px-4 py-3"><div className="skeleton h-8 w-44 ml-auto" /></td>
                                 </tr>
                             ))
                         ) : licenses.length === 0 ? (
                             <tr>
-                                <td colSpan={8} className="px-4 py-16 text-center text-fg-muted animate-fade-in">
+                                <td colSpan={9} className="px-4 py-16 text-center text-fg-muted animate-fade-in">
                                     <div className="flex justify-center mb-3 opacity-40">{Icons.inbox}</div>
                                     {t('list.empty')}
                                 </td>
@@ -377,10 +423,12 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                     <td className="px-4 py-3 text-sm font-medium">{license.customer_name || <span className="text-fg-muted font-normal">-</span>}</td>
                                     <td className="px-4 py-3 text-fg-secondary text-sm">{license.customer_email || <span className="text-fg-muted">-</span>}</td>
                                     <td className="px-4 py-3 text-sm">{license.device_type || <span className="text-fg-muted">-</span>}</td>
+                                    <td className="px-4 py-3 font-mono text-xs text-fg-muted max-w-[120px] truncate" title={license.device_id || '-'}>{license.device_id || <span className="text-fg-muted">-</span>}</td>
                                     <td className="px-4 py-3 text-sm text-fg-muted">{formatDate(license.activated_at)}</td>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center justify-end gap-1.5">
-                                            <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 hover:shadow-md transition-all active:scale-95">{Icons.edit} {t('action.change')}</button>
+                                            <button onClick={() => openEditTable(license)} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-500 text-white rounded-lg cursor-pointer hover:bg-indigo-600 hover:shadow-md transition-all active:scale-95">{Icons.editTable} {t('action.editTable')}</button>
+                                            <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 hover:shadow-md transition-all active:scale-95">{Icons.edit} {t('action.editDevice')}</button>
                                             <button onClick={() => setResetDialog(license)} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 hover:shadow-md transition-all active:scale-95">{Icons.reset} {t('action.reset')}</button>
                                             <button onClick={() => setDeleteDialog(license)} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold bg-danger text-white rounded-lg cursor-pointer hover:bg-red-600 hover:shadow-md transition-all active:scale-95">{Icons.trash}</button>
                                         </div>
@@ -425,14 +473,16 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                             </div>
 
                             {/* Bottom: Info + Actions */}
-                            <div className="flex items-end justify-between mt-3 pt-3 border-t border-border-light">
+                            <div className="flex flex-col gap-3 mt-3 pt-3 border-t border-border-light">
                                 <div className="text-xs text-fg space-y-0.5">
                                     {license.customer_email && <p>{license.customer_email}</p>}
                                     <p>{t('list.device')}: {license.device_type || '—'}</p>
+                                    {license.device_id && <p className="font-mono text-fg-muted truncate" title={license.device_id}>{t('list.deviceId')}: {license.device_id}</p>}
                                     <p>{t('list.activated')}: {formatDate(license.activated_at)}</p>
                                 </div>
-                                <div className="flex gap-1.5 shrink-0 ml-2">
-                                    <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="px-2.5 py-1.5 bg-warning text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-amber-600 transition-all active:scale-95 flex items-center gap-1">{Icons.edit} {t('action.change')}</button>
+                                <div className="flex gap-1.5 flex-wrap">
+                                    <button onClick={() => openEditTable(license)} className="px-2.5 py-1.5 bg-indigo-500 text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-indigo-600 transition-all active:scale-95 flex items-center gap-1">{Icons.editTable} {t('action.editTable')}</button>
+                                    <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="px-2.5 py-1.5 bg-warning text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-amber-600 transition-all active:scale-95 flex items-center gap-1">{Icons.edit} {t('action.editDevice')}</button>
                                     <button onClick={() => setResetDialog(license)} className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-blue-600 transition-all active:scale-95 flex items-center gap-1">{Icons.reset} {t('action.reset')}</button>
                                     <button onClick={() => setDeleteDialog(license)} className="px-2.5 py-1.5 bg-danger text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-red-600 transition-all active:scale-95 flex items-center gap-1">{Icons.trash}</button>
                                 </div>
@@ -467,7 +517,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
 
             {/* ===== PORTAL DIALOGS ===== */}
 
-            {/* Change Device Dialog */}
+            {/* Edit Device Dialog (formerly "Change") */}
             <Dialog open={!!changeDialog} onClose={() => { setChangeDialog(null); setNewPlatform(''); }}>
                 <div className="space-y-4">
                     <div className="flex items-start gap-3">
@@ -528,7 +578,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                 </div>
             </Dialog>
 
-            {/* Delete Dialog */}
+            {/* Delete Dialog (Clears info, keeps serial) */}
             <Dialog open={!!deleteDialog} onClose={() => setDeleteDialog(null)}>
                 <div className="space-y-4">
                     <div className="flex items-start gap-3">
@@ -548,6 +598,68 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                         <button onClick={() => setDeleteDialog(null)} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
                         <button onClick={handleDelete} disabled={actionLoading} className="flex-1 py-2.5 bg-danger text-white rounded-xl cursor-pointer hover:bg-red-600 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
                             {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('action.delete')}
+                        </button>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* Edit Table Dialog */}
+            <Dialog open={!!editTableDialog} onClose={() => setEditTableDialog(null)}>
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 bg-indigo-500/10 text-indigo-500 rounded-lg shrink-0">{Icons.editTable}</div>
+                        <div>
+                            <h3 className="text-base sm:text-lg font-semibold text-fg">{t('dialog.editTableTitle')}</h3>
+                            <p className="text-fg-muted text-sm mt-0.5">{t('dialog.editTableDesc')}</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <div>
+                            <label className="text-xs font-medium text-fg-muted mb-1 block">{t('dialog.serialKey')}</label>
+                            <input
+                                type="text"
+                                value={editSerial}
+                                onChange={(e) => setEditSerial(e.target.value)}
+                                className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-fg-muted mb-1 block">{t('dialog.customerName')}</label>
+                            <input
+                                type="text"
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                placeholder="-"
+                                className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all placeholder-fg-muted"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-fg-muted mb-1 block">{t('dialog.customerEmail')}</label>
+                            <input
+                                type="email"
+                                value={editEmail}
+                                onChange={(e) => setEditEmail(e.target.value)}
+                                placeholder="-"
+                                className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all placeholder-fg-muted"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-fg-muted mb-1 block">{t('dialog.deviceId')}</label>
+                            <input
+                                type="text"
+                                value={editDeviceId}
+                                onChange={(e) => setEditDeviceId(e.target.value)}
+                                placeholder="-"
+                                className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all placeholder-fg-muted"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                        <button onClick={() => setEditTableDialog(null)} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
+                        <button onClick={handleEditTable} disabled={!editSerial || actionLoading} className="flex-1 py-2.5 bg-indigo-500 text-white rounded-xl cursor-pointer hover:bg-indigo-600 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
+                            {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('dialog.confirm')}
                         </button>
                     </div>
                 </div>

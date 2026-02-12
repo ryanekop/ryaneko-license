@@ -22,6 +22,12 @@ const MoonIcon = () => (
     </svg>
 );
 
+const ArrowLeftIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m12 19-7-7 7-7" /><path d="M19 12H5" />
+    </svg>
+);
+
 const KeyIcon = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4" /><path d="m21 2-9.6 9.6" /><circle cx="7.5" cy="15.5" r="5.5" />
@@ -201,6 +207,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2.5 text-fg">
+                            <Link
+                                href="/"
+                                className="w-8 h-8 flex items-center justify-center rounded-lg border border-border text-fg-secondary cursor-pointer hover:bg-bg-secondary hover:text-fg transition-all active:scale-95"
+                                title="Back to Home"
+                            >
+                                <ArrowLeftIcon />
+                            </Link>
                             <KeyIcon />
                             <h1 className="text-base font-semibold">{t('header.title')}</h1>
                         </div>

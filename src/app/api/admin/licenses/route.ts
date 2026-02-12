@@ -10,6 +10,34 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const offset = (page - 1) * limit;
 
+    // First, get the product ID for counting
+    let productId: string | null = null;
+    if (productSlug) {
+        const { data: product } = await supabaseAdmin
+            .from('products')
+            .select('id')
+            .eq('slug', productSlug)
+            .single();
+        productId = product?.id || null;
+    }
+
+    // Get total counts for all statuses (independent of filters/pagination)
+    let totalAll = 0;
+    let availableCount = 0;
+    let usedCount = 0;
+
+    if (productId) {
+        const [totalRes, availableRes, usedRes] = await Promise.all([
+            supabaseAdmin.from('licenses').select('id', { count: 'exact', head: true }).eq('product_id', productId),
+            supabaseAdmin.from('licenses').select('id', { count: 'exact', head: true }).eq('product_id', productId).eq('status', 'available'),
+            supabaseAdmin.from('licenses').select('id', { count: 'exact', head: true }).eq('product_id', productId).eq('status', 'used'),
+        ]);
+        totalAll = totalRes.count || 0;
+        availableCount = availableRes.count || 0;
+        usedCount = usedRes.count || 0;
+    }
+
+    // Build filtered query for the current page
     let query = supabaseAdmin
         .from('licenses')
         .select('*, product:products!inner(*)', { count: 'exact' });
@@ -49,13 +77,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
         licenses: data,
         total: count,
+        totalAll,
+        availableCount,
+        usedCount,
         page,
         limit,
         totalPages: Math.ceil((count || 0) / limit),
     });
 }
 
-// Update license (change device, reset status)
+// Update license (change device, reset status, edit table)
 export async function PATCH(request: NextRequest) {
     try {
         const body = await request.json();
@@ -95,7 +126,7 @@ export async function PATCH(request: NextRequest) {
     }
 }
 
-// Delete license
+// Delete = Clear info (name, email, device, etc.) but keep the serial
 export async function DELETE(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url);
@@ -105,22 +136,33 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'Missing license ID' }, { status: 400 });
         }
 
-        // Delete related activations first
+        // Delete related activations
         await supabaseAdmin
             .from('activations')
             .delete()
             .eq('license_id', id);
 
-        const { error } = await supabaseAdmin
+        // Clear info instead of deleting the serial
+        const { data, error } = await supabaseAdmin
             .from('licenses')
-            .delete()
-            .eq('id', id);
+            .update({
+                customer_name: null,
+                customer_email: null,
+                device_type: null,
+                device_id: null,
+                status: 'available',
+                activated_at: null,
+                last_active_at: null,
+            })
+            .eq('id', id)
+            .select()
+            .single();
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
-        return NextResponse.json({ success: true });
+        return NextResponse.json({ success: true, data });
     } catch (error) {
         return NextResponse.json({ error: String(error) }, { status: 500 });
     }
