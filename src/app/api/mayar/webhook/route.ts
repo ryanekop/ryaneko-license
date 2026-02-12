@@ -290,6 +290,7 @@ async function reserveLicenses(
         .eq('product_id', productId)
         .eq('status', 'available')
         .is('customer_name', null)
+        .order('created_at', { ascending: true })
         .limit(count);
 
     if (error || !availableLicenses || availableLicenses.length === 0) {
