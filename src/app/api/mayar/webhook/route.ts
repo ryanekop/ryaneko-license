@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getFastpikSupabase } from '@/lib/fastpik-supabase';
 import { notifyPurchase, notifyAlert } from '@/lib/telegram';
+import { sendEmail } from '@/lib/resend';
+import { getEmailHtml, getEmailSubject } from '@/lib/email-templates';
 import { generateHash } from '@/lib/crypto';
 import type {
     MayarWebhookPayload,
@@ -327,13 +329,44 @@ async function sendLicenseEmail(
     product: Product,
     includesPlugin: boolean
 ): Promise<boolean> {
-    // TODO: Implement React Email template
-    // For now, just log
-    console.log(`📧 Would send email to ${email} with ${licenses.length} licenses for ${product.name}`);
-    console.log('Licenses:', licenses.map(l => l.serial_key));
-    console.log('Includes Plugin:', includesPlugin);
+    try {
+        const downloadLinks = (product.download_urls || {}) as Record<string, string>;
+        const serialKeys = licenses.map(l => l.serial_key).filter(Boolean);
 
-    return true;
+        const html = getEmailHtml(product.slug, {
+            customerName: name,
+            serialKeys,
+            productName: product.name,
+            downloadLinks,
+            pluginUrl: product.plugin_url || undefined,
+            includesPlugin,
+        });
+
+        const subject = getEmailSubject(product.slug, includesPlugin);
+
+        const result = await sendEmail({
+            to: email,
+            subject,
+            html,
+        });
+
+        if (!result.success) {
+            console.error(`[License Email] Failed to send to ${email}:`, result.error);
+            await notifyAlert(
+                `<b>⚠️ Email Failed</b>\n\n` +
+                `Product: ${product.name}\n` +
+                `Email: ${email}\n` +
+                `Error: ${result.error}`
+            );
+            return false;
+        }
+
+        console.log(`[License Email] ✅ Sent to ${email} for ${product.name}`);
+        return true;
+    } catch (err: any) {
+        console.error('[License Email] Error:', err);
+        return false;
+    }
 }
 
 async function handleLicensePurchase(
