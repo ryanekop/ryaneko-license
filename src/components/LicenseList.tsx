@@ -376,7 +376,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
             <div className="hidden md:block overflow-auto max-h-[calc(100vh-280px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)] animate-slide-up stagger-1" style={{ opacity: 0 }}>
                 <table className="w-full min-w-[1200px]">
                     <thead className="sticky top-0 bg-bg-card z-10 border-b border-border">
-                        <tr className="text-left text-fg-muted text-xs uppercase tracking-wider">
+                        <tr className="text-left text-fg-muted text-xs uppercase tracking-wider whitespace-nowrap">
                             <th className="px-4 py-3 font-medium">No.</th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.key} {t('list.serial')}</span></th>
                             <th className="px-4 py-3 font-medium">{t('list.status')}</th>
@@ -418,13 +418,13 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                     style={{ animationDelay: `${index * 0.03}s` }}
                                 >
                                     <td className="px-4 py-3 text-sm text-fg-muted">{(page - 1) * 50 + index + 1}</td>
-                                    <td className="px-4 py-3 font-mono text-sm text-fg-secondary">{license.serial_key}</td>
-                                    <td className="px-4 py-3">{getStatusBadge(license.status)}</td>
-                                    <td className="px-4 py-3 text-sm font-medium">{license.customer_name || <span className="text-fg-muted font-normal">-</span>}</td>
-                                    <td className="px-4 py-3 text-fg-secondary text-sm">{license.customer_email || <span className="text-fg-muted">-</span>}</td>
-                                    <td className="px-4 py-3 text-sm">{license.device_type || <span className="text-fg-muted">-</span>}</td>
-                                    <td className="px-4 py-3 font-mono text-xs text-fg-muted max-w-[120px] truncate" title={license.device_id || '-'}>{license.device_id || <span className="text-fg-muted">-</span>}</td>
-                                    <td className="px-4 py-3 text-sm text-fg-muted">{formatDate(license.activated_at)}</td>
+                                    <td className="px-4 py-3 font-mono text-sm text-fg-secondary whitespace-nowrap">{license.serial_key}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap">{getStatusBadge(license.status)}</td>
+                                    <td className="px-4 py-3 text-sm font-medium whitespace-nowrap">{license.customer_name || <span className="text-fg-muted font-normal">-</span>}</td>
+                                    <td className="px-4 py-3 text-fg-secondary text-sm whitespace-nowrap">{license.customer_email || <span className="text-fg-muted">-</span>}</td>
+                                    <td className="px-4 py-3 text-sm whitespace-nowrap">{license.device_type || <span className="text-fg-muted">-</span>}</td>
+                                    <td className="px-4 py-3 font-mono text-xs text-fg-muted max-w-[150px] truncate" title={license.device_id || '-'}>{license.device_id || <span className="text-fg-muted">-</span>}</td>
+                                    <td className="px-4 py-3 text-sm text-fg-muted whitespace-nowrap">{formatDate(license.activated_at)}</td>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center justify-end gap-1.5">
                                             <button onClick={() => openEditTable(license)} className="inline-flex items-center justify-center w-8 h-8 bg-indigo-500 text-white rounded-lg cursor-pointer hover:bg-indigo-600 hover:shadow-md transition-all active:scale-95" title={t('action.editTable')}>{Icons.editTable}</button>
