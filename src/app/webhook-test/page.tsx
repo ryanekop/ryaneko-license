@@ -558,6 +558,31 @@ export default function WebhookTestPage() {
                 </div>
             </div>
 
+            {/* Footer: Webhook URL */}
+            <div style={{
+                marginTop: '24px',
+                padding: '16px 20px',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                textAlign: 'center',
+            }}>
+                <p style={{ fontSize: '12px', color: 'var(--fg-muted)', marginBottom: '6px' }}>Mayar Webhook Endpoint</p>
+                <code style={{
+                    fontSize: '13px',
+                    color: 'var(--fg)',
+                    fontFamily: 'var(--font-geist-mono), monospace',
+                    background: 'var(--bg)',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    userSelect: 'all',
+                    cursor: 'text',
+                }}>
+                    https://license.ryanekoapp.web.id/api/mayar/webhook
+                </code>
+            </div>
+
             {/* Mobile: stack columns */}
             <style>{`
                 @media (max-width: 768px) {
