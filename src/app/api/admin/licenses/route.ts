@@ -58,7 +58,9 @@ export async function GET(request: NextRequest) {
 
     const hideEmpty = searchParams.get('hideEmpty');
     if (hideEmpty === 'true') {
-        query = query.neq('status', 'available');
+        // Only hide serials that are truly empty: available AND no customer data at all
+        // Show rows where: status != available OR has customer_name OR has customer_email OR has device_type
+        query = query.or('status.neq.available,customer_name.not.is.null,customer_email.not.is.null,device_type.not.is.null');
     }
 
     const sort = searchParams.get('sort');
