@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
                 `📦 Product: ${licenseData.product?.name || 'Unknown'}\n` +
                 `👤 Name: ${licenseData.customer_name || 'Unknown'}\n` +
                 `📧 Email: ${licenseData.customer_email || '-'}\n` +
+                `💻 ${licenseData.device_type || '-'}\n` +
                 `🖥 Expected Device: <code>${licenseData.device_id || '-'}</code>\n` +
                 `🆕 Got Device: <code>${device_id}</code>\n` +
                 `🌐 IP: ${ip}`

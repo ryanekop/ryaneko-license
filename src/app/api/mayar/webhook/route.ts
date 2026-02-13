@@ -355,9 +355,9 @@ async function sendLicenseEmail(
             console.error(`[License Email] Failed to send to ${email}:`, result.error);
             await notifyAlert(
                 `<b>⚠️ Email Failed</b>\n\n` +
-                `Product: ${product.name}\n` +
-                `Email: ${email}\n` +
-                `Error: ${result.error}`
+                `📦 Product: ${product.name}\n` +
+                `📧 Email: ${email}\n` +
+                `❌ Error: ${result.error}`
             );
             return false;
         }
@@ -413,11 +413,11 @@ async function handleLicensePurchase(
     if (reservedLicenses.length < totalLicenses) {
         await notifyAlert(
             `<b>⚠️ LICENSE SHORTAGE</b>\n\n` +
-            `Product: ${product.name}\n` +
-            `Order: ${orderData.id}\n` +
-            `Customer: ${customerEmail}\n` +
-            `Needed: ${totalLicenses}\n` +
-            `Available: ${reservedLicenses.length}`
+            `📦 Product: ${product.name}\n` +
+            `🧾 Order: ${orderData.id}\n` +
+            `📧 Customer: ${customerEmail}\n` +
+            `📊 Needed: ${totalLicenses}\n` +
+            `📉 Available: ${reservedLicenses.length}`
         );
     }
 
@@ -539,9 +539,9 @@ export async function POST(request: NextRequest) {
         console.log(`[Mayar Webhook] ❓ Unknown product: ${productName}`);
         await notifyAlert(
             `<b>⚠️ Unknown Product in Webhook</b>\n\n` +
-            `Product: ${productName}\n` +
-            `Email: ${customerEmail}\n` +
-            `Order: ${orderData.id}`
+            `📦 Product: ${productName}\n` +
+            `📧 Email: ${customerEmail}\n` +
+            `🧾 Order: ${orderData.id}`
         );
 
         return jsonResponse('Success', `Product not managed: ${productName}`);

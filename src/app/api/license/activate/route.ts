@@ -65,8 +65,7 @@ export async function POST(request: NextRequest) {
                     `📧 Email: ${licenseData.customer_email || '-'}\n` +
                     `🖥 Existing Device: <code>${licenseData.device_id}</code>\n` +
                     `🆕 New Device: <code>${device_id}</code>\n` +
-                    `💻 Type: ${device_type}\n` +
-                    `🖥 OS: ${os_version || '-'}\n` +
+                    `💻 ${device_type}${os_version ? ' · ' + os_version : ''}\n` +
                     `🌐 IP: ${ip}`
                 );
 
@@ -126,10 +125,9 @@ export async function POST(request: NextRequest) {
             `<b>License Activated</b>\n\n` +
             `📦 ${licenseData.product?.name || 'Unknown'}\n` +
             `🔑 <code>${serial_key}</code>\n` +
-            `💻 ${device_type}\n` +
+            `💻 ${device_type}${os_version ? ' · ' + os_version : ''}\n` +
             `👤 ${licenseData.customer_name || 'Unknown'}\n` +
             `📧 ${licenseData.customer_email || '-'}\n` +
-            `🖥 OS: ${os_version || '-'}\n` +
             `🌐 IP: ${ip}`
         );
 
