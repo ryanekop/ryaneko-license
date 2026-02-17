@@ -165,7 +165,7 @@ export function realtimeUploadTemplate(params: LicenseEmailParams): string {
     <hr style="margin: 25px 0;">
     <p style="font-size:16px;">&#10067; Butuh bantuan atau ada pertanyaan? Langsung hubungi di Instagram
       <a href="https://instagram.com/ryanekopram" style="color:#1155cc;">@ryanekopram</a> &
-      <a href="https://instagram.com/ryaneko.apps" style="color:#1155cc;">@ryaneko.apps</a>
+      <a href="https://instagram.com/ryanekoapps" style="color:#1155cc;">@ryanekoapps</a>
     </p>
 
     <p style="font-size:16px; margin-top:15px;">Enjoy from dev, Ryan Eko &#9889;</p>
@@ -237,7 +237,7 @@ export function photoSplitTemplate(params: LicenseEmailParams): string {
     <hr style="margin: 25px 0;">
     <p style="font-size:16px;">&#10067; Butuh bantuan atau ada pertanyaan? Langsung hubungi di Instagram
       <a href="https://instagram.com/ryanekopram" style="color:#1155cc;">@ryanekopram</a> &
-      <a href="https://instagram.com/ryaneko.apps" style="color:#1155cc;">@ryaneko.apps</a>
+      <a href="https://instagram.com/ryanekoapps" style="color:#1155cc;">@ryanekoapps</a>
     </p>
 
     <p style="font-size:16px; margin-top:15px;">Enjoy from dev, Ryan Eko &#9889;</p>
