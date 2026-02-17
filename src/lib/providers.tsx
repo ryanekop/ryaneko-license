@@ -164,6 +164,10 @@ const translations = {
         'home.webhook': 'Webhook Status',
         'home.webhookTest': 'Webhook Tester',
         'home.products': 'Produk yang Didukung',
+        'home.panel': 'Panel Layanan',
+        'tab.panel': 'Panel',
+        'panel.title': 'Panel Layanan',
+        'panel.desc': 'Akses cepat ke berbagai dashboard dan layanan eksternal.',
     },
     en: {
         'login.title': 'Ryan Eko License',
@@ -287,6 +291,10 @@ const translations = {
         'home.webhook': 'Webhook Status',
         'home.webhookTest': 'Webhook Tester',
         'home.products': 'Supported Products',
+        'home.panel': 'Service Panel',
+        'tab.panel': 'Panel',
+        'panel.title': 'Service Panel',
+        'panel.desc': 'Quick access to various dashboards and external services.',
     },
 } as const;
 

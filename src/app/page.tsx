@@ -33,6 +33,12 @@ const WebhookIcon = () => (
   </svg>
 );
 
+const GridIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" />
+  </svg>
+);
+
 export default function Home() {
   const { theme, toggleTheme } = useTheme();
   const { lang, toggleLang, t } = useLang();
@@ -73,6 +79,13 @@ export default function Home() {
             className="px-6 py-3.5 bg-accent text-accent-fg font-medium rounded-xl cursor-pointer hover:opacity-85 transition-all active:scale-[0.98] shadow-[var(--shadow)] flex items-center justify-center gap-2"
           >
             <SettingsIcon /> {t('home.admin')}
+          </Link>
+
+          <Link
+            href="/panel"
+            className="px-6 py-3.5 bg-bg-card text-fg font-semibold rounded-xl cursor-pointer hover:bg-bg-secondary transition-all border border-border active:scale-[0.98] flex items-center justify-center gap-2"
+          >
+            <GridIcon /> {t('home.panel')}
           </Link>
 
           <Link

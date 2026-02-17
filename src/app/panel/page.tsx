@@ -1,15 +1,10 @@
 'use client';
 
-import { useState, useEffect, ReactNode } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { useTheme, useLang } from '@/lib/providers';
 
-interface AdminLayoutProps {
-    children: ReactNode;
-}
-
-// SVG Icons
+// --- ICONS (Same as AdminLayout) ---
 const SunIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />
@@ -40,62 +35,73 @@ const LogOutIcon = () => (
     </svg>
 );
 
-const FolderIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-    </svg>
-);
+const EXTERNAL_LINKS = [
+    {
+        name: 'Mayar.id',
+        url: 'https://web.mayar.id/',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=mayar.id&sz=128',
+        color: 'text-blue-600',
+        bg: 'bg-blue-600/5'
+    },
+    {
+        name: 'Server Hostingan.id',
+        url: 'https://my.hostingan.id/clientarea.php?action=productdetails&id=5733',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=hostingan.id&sz=128',
+        color: 'text-orange-600',
+        bg: 'bg-orange-600/5'
+    },
+    {
+        name: 'Domainesia.com',
+        url: 'https://my.domainesia.com/clientarea.php?action=domaindns',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=domainesia.com&sz=128',
+        color: 'text-sky-600',
+        bg: 'bg-sky-600/5'
+    },
+    {
+        name: 'Supabase',
+        url: 'https://supabase.com/dashboard/org/kseeljmrngtmvmkiexad',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=supabase.com&sz=128',
+        color: 'text-emerald-600',
+        bg: 'bg-emerald-600/5'
+    },
+    {
+        name: 'Cloudflare Workers',
+        url: 'https://dash.cloudflare.com/b2d74627e32503857472817ed109d920/workers-and-pages',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=cloudflare.com&sz=128',
+        color: 'text-amber-600',
+        bg: 'bg-amber-600/5'
+    },
+    {
+        name: 'Pagespeed',
+        url: 'https://pagespeed.web.dev/analysis/https-fastpik-ryanekoapp-web-id/bb7i7r83tf?form_factor=mobile',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=web.dev&sz=128',
+        color: 'text-indigo-600',
+        bg: 'bg-indigo-600/5'
+    },
+    {
+        name: 'Analytics Umami',
+        url: 'https://cloud.umami.is/analytics/us/websites/14ffd81f-07b2-4cc0-b72b-7b8aa4e864a0?path=eq.%2Fid%2Fclient%2Faloragraduation%2FAE8mr66C8Pky',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=umami.is&sz=128',
+        color: 'text-pink-600',
+        bg: 'bg-pink-600/5'
+    },
+    {
+        name: 'Uptime Robot',
+        url: 'https://dashboard.uptimerobot.com/monitors',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=uptimerobot.com&sz=128',
+        color: 'text-green-600',
+        bg: 'bg-green-600/5'
+    }
+];
 
-const UploadIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" />
-    </svg>
-);
-
-const ScissorsIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="6" cy="6" r="3" /><path d="M8.12 8.12 12 12" /><path d="M20 4 8.12 15.88" /><circle cx="6" cy="18" r="3" /><path d="M14.8 14.8 20 20" />
-    </svg>
-);
-
-const CameraIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" />
-    </svg>
-);
-
-const GenerateIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-    </svg>
-);
-
-
-const TAB_ICONS: Record<string, React.ReactNode> = {
-    'raw-file-copy-tool': <FolderIcon />,
-    'realtime-upload-pro': <UploadIcon />,
-    'photo-split-express': <ScissorsIcon />,
-    'fastpik': <CameraIcon />,
-    'generate': <GenerateIcon />,
-};
-
-export default function AdminLayout({ children }: AdminLayoutProps) {
+export default function PanelPage() {
+    const { theme, toggleTheme } = useTheme();
+    const { lang, toggleLang, t } = useLang();
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
     const [loginLoading, setLoginLoading] = useState(false);
-    const pathname = usePathname();
-    const { theme, toggleTheme } = useTheme();
-    const { lang, toggleLang, t } = useLang();
-
-    const TABS = [
-        { name: t('tab.rawFileCopy'), href: '/admin/raw-file-copy', slug: 'raw-file-copy-tool' },
-        { name: t('tab.realtimeUpload'), href: '/admin/realtime-upload', slug: 'realtime-upload-pro' },
-        { name: t('tab.photoSplit'), href: '/admin/photo-split', slug: 'photo-split-express' },
-        { name: t('tab.fastpik'), href: '/admin/fastpik', slug: 'fastpik' },
-        { name: t('tab.generate'), href: '/admin/generate', slug: 'generate' },
-    ];
+    const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
         const saved = sessionStorage.getItem('admin_auth');
@@ -126,7 +132,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         }
     };
 
-    // Login screen
     if (!isAuthenticated) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-bg">
@@ -149,7 +154,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     <div className="text-center mb-8">
                         <div className="flex justify-center mb-3 text-fg animate-fade-in"><KeyIcon /></div>
                         <h1 className="text-2xl font-bold text-fg">{t('login.title')}</h1>
-                        <p className="text-fg-muted mt-1 text-sm">{t('login.subtitle')}</p>
+                        <p className="text-fg-muted mt-1 text-sm">{t('panel.title')}</p>
                     </div>
 
                     <form onSubmit={handleLogin} className="space-y-4">
@@ -201,7 +206,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         );
     }
 
-    // Main admin layout
     return (
         <div className="min-h-screen bg-bg">
             <header className="bg-bg-card border-b border-border sticky top-0 z-50 shadow-[var(--shadow)]">
@@ -216,7 +220,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                 <ArrowLeftIcon />
                             </Link>
                             <KeyIcon />
-                            <h1 className="text-base font-semibold">{t('header.title')}</h1>
+                            <h1 className="text-base font-semibold tracking-tight">{t('panel.title')}</h1>
                         </div>
                         <div className="flex items-center gap-2">
                             <button
@@ -245,32 +249,73 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 </div>
             </header>
 
-            <div className="border-b border-border bg-bg-card">
-                <div className="max-w-[1600px] mx-auto px-4 sm:px-6">
-                    <nav className="flex space-x-1 overflow-x-auto py-2">
-                        {TABS.map((tab) => {
-                            const isActive = pathname.startsWith(tab.href);
-                            return (
-                                <Link
-                                    key={tab.slug}
-                                    href={tab.href}
-                                    className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all cursor-pointer active:scale-[0.97] flex items-center gap-2 ${isActive
-                                        ? 'bg-accent text-accent-fg font-medium shadow-[var(--shadow)]'
-                                        : 'text-fg-secondary hover:text-fg hover:bg-bg-secondary'
-                                        }`}
-                                >
-                                    {TAB_ICONS[tab.slug]}
-                                    {tab.name}
-                                </Link>
-                            );
-                        })}
-                    </nav>
+            <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-12 animate-fade-in">
+                <div className="mb-12 text-center">
+                    <h2 className="text-3xl font-bold text-fg tracking-tight">{t('panel.title')}</h2>
+                    <p className="text-fg-muted mt-2 max-w-lg mx-auto">{t('panel.desc')}</p>
                 </div>
-            </div>
 
-            <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 animate-fade-in">
-                {children}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {EXTERNAL_LINKS.map((link, index) => (
+                        <a
+                            key={link.name}
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="link-card"
+                            style={{ '--delay': `${index * 50}ms` } as any}
+                        >
+                            <div className="panel-card flex flex-col items-center text-center p-8 bg-bg-card border border-border rounded-2xl group">
+                                <div className={`w-16 h-16 rounded-2xl ${link.bg} flex items-center justify-center mb-5`}>
+                                    <img
+                                        src={link.iconUrl}
+                                        alt={link.name}
+                                        className="w-10 h-10 object-contain rounded-lg"
+                                        onError={(e) => {
+                                            (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(link.name)}&background=random&color=fff&size=128`;
+                                        }}
+                                    />
+                                </div>
+                                <h3 className="text-lg font-semibold text-fg mb-1 group-hover:text-accent" style={{ transition: 'color 0.3s ease' }}>
+                                    {link.name}
+                                </h3>
+                                <p className="mt-2 text-xs font-medium text-fg-muted">
+                                    Buka Dashboard →
+                                </p>
+                            </div>
+                        </a>
+                    ))}
+                </div>
             </main>
+
+            <style jsx global>{`
+                @keyframes cardEntrance {
+                    from {
+                        opacity: 0;
+                        transform: translateY(15px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
+                
+                .link-card {
+                    opacity: 0;
+                    animation: cardEntrance 0.6s ease-out forwards;
+                    animation-delay: var(--delay);
+                }
+
+                .panel-card {
+                    transition: box-shadow 0.3s ease, border-color 0.3s ease, transform 0.3s ease !important;
+                }
+
+                .panel-card:hover {
+                    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+                    border-color: var(--accent, #3b82f6) / 0.2;
+                    transform: translateY(-4px);
+                }
+            `}</style>
         </div>
     );
 }
