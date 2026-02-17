@@ -4,18 +4,53 @@ import { generateDeviceHash, verifyHash } from '@/lib/crypto';
 import { notifyActivation, notifyAlert } from '@/lib/telegram';
 import type { ActivationRequest, ActivationResponse, License } from '@/lib/types';
 
+/**
+ * Normalize device_type from OS-reported values to consistent display format.
+ * e.g. "macOS" → "Mac", "macOS-Monterey" → "Mac (Monterey)", "Windows" → "Windows"
+ */
+function normalizeDeviceType(raw: string): string {
+    if (!raw) return raw;
+    const lower = raw.toLowerCase().trim();
+
+    // macOS variants: "macos", "macos-monterey", "macos-ventura", etc.
+    if (lower.startsWith('macos') || lower.startsWith('mac os')) {
+        // Check for version suffix like "macOS-Monterey" or "macOS Monterey"
+        const match = raw.match(/^mac\s*os[\s\-_]*(.+)$/i);
+        if (match && match[1]) {
+            const version = match[1].trim();
+            return `Mac (${version.charAt(0).toUpperCase() + version.slice(1)})`;
+        }
+        return 'Mac';
+    }
+
+    // Already "Mac" or "Mac (something)"
+    if (lower === 'mac' || lower.startsWith('mac (')) {
+        return raw;
+    }
+
+    // Windows stays as-is
+    if (lower.startsWith('windows')) {
+        return 'Windows';
+    }
+
+    return raw;
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body: ActivationRequest = await request.json();
-        const { serial_key, device_id, device_type, os_version } = body;
+        const { serial_key, device_id, device_type: rawDeviceType, os_version } = body;
 
         // Validate required fields
-        if (!serial_key || !device_id || !device_type) {
+        if (!serial_key || !device_id || !rawDeviceType) {
             return NextResponse.json<ActivationResponse>(
                 { success: false, message: 'Missing required fields' },
                 { status: 400 }
             );
         }
+
+        // Normalize device type for consistent display
+        const device_type = normalizeDeviceType(rawDeviceType);
 
         // Get client IP
         const ip = request.headers.get('x-forwarded-for') ||
