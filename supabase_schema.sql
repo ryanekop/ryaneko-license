@@ -74,6 +74,7 @@ CREATE TABLE licenses (
   -- Customer Info (filled on purchase)
   customer_name TEXT,
   customer_email TEXT,
+  customer_instagram TEXT,
   order_id TEXT,
   
   -- Activation Info (filled on app activation)
@@ -103,6 +104,7 @@ CREATE TABLE purchases (
   product_id UUID REFERENCES products(id) ON DELETE SET NULL,
   customer_name TEXT NOT NULL,
   customer_email TEXT NOT NULL,
+  customer_instagram TEXT,
   license_count INT DEFAULT 1,
   includes_plugin BOOLEAN DEFAULT false,
   addons JSONB,

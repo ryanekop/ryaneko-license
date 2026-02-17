@@ -31,6 +31,7 @@ export interface License {
     // Customer Info (filled on purchase)
     customer_name?: string;
     customer_email?: string;
+    customer_instagram?: string;
     order_id?: string;
 
     // Activation Info (filled on app activation)
@@ -54,6 +55,7 @@ export interface Purchase {
     product_id: string;
     customer_name: string;
     customer_email: string;
+    customer_instagram?: string;
     license_count: number;
     includes_plugin: boolean;
     addons?: Record<string, unknown>;
@@ -95,6 +97,19 @@ export interface MayarWebhookPayload {
     items?: MayarAddon[];
 }
 
+export interface MayarCustomField {
+    name: string;
+    value: string | MayarCustomFieldOption[];
+    fieldType?: string;
+    selectedValue?: MayarCustomFieldOption;
+}
+
+export interface MayarCustomFieldOption {
+    name: string;
+    value: string;
+    selected?: boolean;
+}
+
 export interface MayarOrderData {
     id: string;
     productName?: string;
@@ -106,6 +121,7 @@ export interface MayarOrderData {
     addOn?: MayarAddon[];
     addons?: MayarAddon[];
     items?: MayarAddon[];
+    custom_field?: MayarCustomField[];
 }
 
 export interface MayarAddon {

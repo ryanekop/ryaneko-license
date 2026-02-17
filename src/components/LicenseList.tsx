@@ -16,6 +16,7 @@ interface License {
     status: 'available' | 'used' | 'revoked';
     customer_name?: string;
     customer_email?: string;
+    customer_instagram?: string;
     device_type?: string;
     device_id?: string;
     activated_at?: string;
@@ -155,6 +156,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [editSerial, setEditSerial] = useState('');
     const [editName, setEditName] = useState('');
     const [editEmail, setEditEmail] = useState('');
+    const [editInstagram, setEditInstagram] = useState('');
     const [editDeviceId, setEditDeviceId] = useState('');
 
     const fetchLicenses = useCallback(async () => {
@@ -250,6 +252,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                     serial_key: editSerial,
                     customer_name: editName || null,
                     customer_email: editEmail || null,
+                    customer_instagram: editInstagram || null,
                     device_id: editDeviceId || null,
                 }),
             });
@@ -265,6 +268,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
         setEditSerial(license.serial_key);
         setEditName(license.customer_name || '');
         setEditEmail(license.customer_email || '');
+        setEditInstagram(license.customer_instagram || '');
         setEditDeviceId(license.device_id || '');
     };
 
@@ -398,6 +402,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                             <th className="px-4 py-3 font-medium">{t('list.status')}</th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.user} {t('list.name')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.mail} {t('list.email')}</span></th>
+                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">📸 {t('list.instagram')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.monitor} {t('list.device')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.fingerprint} {t('list.deviceId')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.calendar} {t('list.activated')}</span></th>
@@ -421,7 +426,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                             ))
                         ) : licenses.length === 0 ? (
                             <tr>
-                                <td colSpan={9} className="px-4 py-16 text-center text-fg-muted animate-fade-in">
+                                <td colSpan={10} className="px-4 py-16 text-center text-fg-muted animate-fade-in">
                                     <div className="flex justify-center mb-3 opacity-40">{Icons.inbox}</div>
                                     {t('list.empty')}
                                 </td>
@@ -438,6 +443,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                     <td className="px-4 py-3 whitespace-nowrap">{getStatusBadge(license.status)}</td>
                                     <td className="px-4 py-3 text-sm font-medium whitespace-nowrap">{license.customer_name || <span className="text-fg-muted font-normal">-</span>}</td>
                                     <td className="px-4 py-3 text-fg-secondary text-sm whitespace-nowrap">{license.customer_email || <span className="text-fg-muted">-</span>}</td>
+                                    <td className="px-4 py-3 text-sm whitespace-nowrap">{license.customer_instagram ? <span className="text-fuchsia-600 dark:text-fuchsia-400">@{license.customer_instagram}</span> : <span className="text-fg-muted">-</span>}</td>
                                     <td className="px-4 py-3 text-sm whitespace-nowrap">{license.device_type || <span className="text-fg-muted">-</span>}</td>
                                     <td className="px-4 py-3 font-mono text-xs text-fg-muted max-w-[150px] truncate" title={license.device_id || '-'}>{license.device_id || <span className="text-fg-muted">-</span>}</td>
                                     <td className="px-4 py-3 text-sm text-fg-muted whitespace-nowrap">{formatDate(license.activated_at)}</td>
@@ -492,6 +498,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                             <div className="flex flex-col gap-3 mt-3 pt-3 border-t border-border-light">
                                 <div className="text-xs text-fg space-y-0.5">
                                     {license.customer_email && <p>{license.customer_email}</p>}
+                                    {license.customer_instagram && <p className="text-fuchsia-600 dark:text-fuchsia-400">@{license.customer_instagram}</p>}
                                     <p>{t('list.device')}: {license.device_type || '—'}</p>
                                     {license.device_id && <p className="font-mono text-fg-muted truncate" title={license.device_id}>{t('list.deviceId')}: {license.device_id}</p>}
                                     <p>{t('list.activated')}: {formatDate(license.activated_at)}</p>
@@ -657,6 +664,16 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                 value={editEmail}
                                 onChange={(e) => setEditEmail(e.target.value)}
                                 placeholder="-"
+                                className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all placeholder-fg-muted"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-fg-muted mb-1 block">{t('dialog.customerInstagram')}</label>
+                            <input
+                                type="text"
+                                value={editInstagram}
+                                onChange={(e) => setEditInstagram(e.target.value)}
+                                placeholder="username (tanpa @)"
                                 className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all placeholder-fg-muted"
                             />
                         </div>

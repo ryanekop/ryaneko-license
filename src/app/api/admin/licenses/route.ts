@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 
     if (search) {
         query = query.or(
-            `customer_name.ilike.%${search}%,customer_email.ilike.%${search}%,serial_key.ilike.%${search}%`
+            `customer_name.ilike.%${search}%,customer_email.ilike.%${search}%,serial_key.ilike.%${search}%,customer_instagram.ilike.%${search}%`
         );
     }
 
@@ -117,6 +117,20 @@ export async function PATCH(request: NextRequest) {
             };
         }
 
+        // Clear all action: clear everything including customer info
+        if (action === 'clear') {
+            finalUpdate = {
+                status: 'available',
+                customer_name: null,
+                customer_email: null,
+                customer_instagram: null,
+                device_type: null,
+                device_id: null,
+                activated_at: null,
+                last_active_at: null,
+            };
+        }
+
         const { data, error } = await supabaseAdmin
             .from('licenses')
             .update(finalUpdate)
@@ -156,6 +170,7 @@ export async function DELETE(request: NextRequest) {
             .update({
                 customer_name: null,
                 customer_email: null,
+                customer_instagram: null,
                 device_type: null,
                 device_id: null,
                 status: 'available',

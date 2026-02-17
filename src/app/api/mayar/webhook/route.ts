@@ -8,6 +8,7 @@ import { generateHash } from '@/lib/crypto';
 import type {
     MayarWebhookPayload,
     MayarOrderData,
+    MayarCustomField,
     Product,
     License,
     DeviceType
@@ -41,6 +42,18 @@ async function detectProduct(productName: string): Promise<Product | null> {
         }
     }
 
+    return null;
+}
+
+// Extract Instagram username from Mayar custom_field
+function extractInstagram(customFields?: MayarCustomField[]): string | null {
+    if (!Array.isArray(customFields)) return null;
+    for (const field of customFields) {
+        if (field.name?.toLowerCase().includes('instagram') && typeof field.value === 'string') {
+            // Remove @ prefix if present, we'll add it on display
+            return field.value.replace(/^@/, '').trim() || null;
+        }
+    }
     return null;
 }
 
@@ -279,7 +292,8 @@ async function reserveLicenses(
     count: number,
     customerName: string,
     customerEmail: string,
-    orderId: string
+    orderId: string,
+    customerInstagram?: string | null
 ): Promise<License[]> {
     const reservedLicenses: License[] = [];
 
@@ -307,6 +321,7 @@ async function reserveLicenses(
             .update({
                 customer_name: customerName,
                 customer_email: customerEmail,
+                customer_instagram: customerInstagram || null,
                 order_id: orderId,
                 batch_info: batchInfo,
             })
@@ -379,6 +394,8 @@ async function handleLicensePurchase(
     const customerName = orderData.customerName || orderData.customer_name || 'Customer';
     const productName = orderData.productName || orderData.product_name || '';
     const addons = orderData.addOn || orderData.addons || orderData.items || [];
+    const customFields = orderData.custom_field || (payload.data as any)?.custom_field || [];
+    const customerInstagram = extractInstagram(customFields);
 
     console.log(`Detected Product: ${product.name} (${product.slug})`);
 
@@ -404,7 +421,8 @@ async function handleLicensePurchase(
         totalLicenses,
         customerName,
         customerEmail!,
-        orderData.id
+        orderData.id,
+        customerInstagram
     );
 
     console.log(`Reserved ${reservedLicenses.length}/${totalLicenses} licenses`);
@@ -433,6 +451,7 @@ async function handleLicensePurchase(
             product_id: product.id,
             customer_name: customerName,
             customer_email: customerEmail,
+            customer_instagram: customerInstagram,
             license_count: totalLicenses,
             includes_plugin: includesPlugin || isBundle,
             addons: addons,
@@ -460,6 +479,7 @@ async function handleLicensePurchase(
         `📦 ${product.name}\n` +
         `👤 ${customerName}\n` +
         `📧 ${customerEmail}\n` +
+        `${customerInstagram ? `📸 @${customerInstagram}\n` : ''}` +
         `🔑 ${reservedLicenses.length} license(s)\n\n` +
         `<b>Serial Keys:</b>\n${serialList}\n` +
         `${includesPlugin || isBundle ? '\n🔌 + Plugin' : ''}`
