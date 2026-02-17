@@ -142,6 +142,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [deviceFilter, setDeviceFilter] = useState('all');
     const [sortAsc, setSortAsc] = useState(false);
     const [showEmpty, setShowEmpty] = useState(false);
 
@@ -167,6 +168,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                 sort: sortAsc ? 'asc' : 'desc',
                 ...(search && { search }),
                 ...(!showEmpty && { hideEmpty: 'true' }),
+                ...(deviceFilter !== 'all' && { device: deviceFilter }),
             });
 
             const res = await fetch(`/api/admin/licenses?${params}`);
@@ -182,7 +184,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
         } finally {
             setLoading(false);
         }
-    }, [productSlug, page, search, statusFilter, sortAsc, showEmpty]);
+    }, [productSlug, page, search, statusFilter, deviceFilter, sortAsc, showEmpty]);
 
     useEffect(() => {
         fetchLicenses();
@@ -331,6 +333,20 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                             {showEmpty ? Icons.eye : Icons.eyeOff}
                             <span className="hidden sm:inline">{showEmpty ? (t('list.showEmpty') || 'Serial Kosong') : (t('list.hideEmpty') || 'Sembunyikan')}</span>
                         </button>
+                        <select
+                            value={deviceFilter}
+                            onChange={(e) => { setDeviceFilter(e.target.value); setPage(1); }}
+                            className={`px-3 py-2 border rounded-lg text-xs sm:text-sm cursor-pointer transition-all active:scale-95 shadow-[var(--shadow)] font-medium appearance-none pr-7 bg-[length:12px] bg-[right_8px_center] bg-no-repeat ${deviceFilter !== 'all'
+                                ? 'bg-accent text-accent-fg border-accent'
+                                : 'bg-bg-card border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
+                                }`}
+                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${deviceFilter !== 'all' ? 'white' : '%236b7280'}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")` }}
+                        >
+                            <option value="all">{t('list.allDevices')}</option>
+                            {platforms.map((p) => (
+                                <option key={p.value} value={p.value}>{p.label}</option>
+                            ))}
+                        </select>
                         <button
                             onClick={() => { setSortAsc(!sortAsc); setPage(1); }}
                             className="px-3 py-2 bg-bg-card border border-border rounded-lg text-fg-secondary text-xs sm:text-sm cursor-pointer hover:bg-bg-secondary hover:text-fg hover:border-fg-muted transition-all active:scale-95 flex items-center gap-1.5 shadow-[var(--shadow)] font-medium"

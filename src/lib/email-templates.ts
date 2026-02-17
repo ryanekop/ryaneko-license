@@ -14,175 +14,6 @@ interface LicenseEmailParams {
 // RAW FILE COPY TOOL
 // =============================================
 
-export function rawFileCopyMacTemplate(params: LicenseEmailParams): string {
-    const { customerName, serialKeys, downloadLinks } = params;
-    const serialHtml = serialKeys.map((key, i) =>
-        `<p style="font-size:18px; color:#f57c00; font-weight:bold; letter-spacing:1px;">${key}${serialKeys.length > 1 ? ` <span style="color:#666; font-size:12px; margin-left:10px;">License #${i + 1}</span>` : ''}</p>`
-    ).join('');
-
-    return `<!DOCTYPE html>
-<html>
-<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; font-size: 15px;">
-    <div style="margin-bottom: 25px;">
-      <img src="https://raw.githubusercontent.com/ryanekop/RAWFileCopyTool/refs/heads/main/Ryanekopram%20logo.png" width="220" style="margin-right:10px;">
-      <img src="https://raw.githubusercontent.com/ryanekop/RAWFileCopyTool/refs/heads/main/512.png" width="48" alt="icon">
-    </div>
-
-    <p style="font-size:16px;">Halo <b>${customerName}</b>!</p>
-    <p style="font-size:16px;">
-      Terima kasih banyak atas kepercayaannya untuk membeli software
-      <strong>RAW File Copy Tool (Mac)</strong>.
-    </p>
-
-    <p style="font-size:16px;">Silakan download software melalui link di bawah ini:</p>
-    <p style="font-size:17px; margin: 15px 0;">
-      <a href="${downloadLinks['macOS'] || '#'}" style="color:#1155cc; text-decoration:none; font-weight:bold;" target="_blank">Link Download</a> - v2.6.4
-    </p>
-
-    <p style="font-size:16px; margin-top:20px;">&#128273; Serial Number:</p>
-    ${serialHtml}
-
-    <hr style="margin: 25px 0;">
-
-    <p style="font-size:18px; font-weight:bold;">&#127909; Video Tutorial Cara Install RAW File Copy Tool Mac</p>
-    <p><a href="https://www.instagram.com/p/DQWhCrGk8SH/" target="_blank" style="font-size:17px; margin: 15px 0; color:#1155cc; font-weight:bold;">Klik untuk menonton video</a></p>
-    <p style="font-size:18px; font-weight:bold;">&#128640; Cara Install RAW File Copy Tool Mac</p>
-    <ol style="font-size:16px; padding-left:20px; margin:10px 0;">
-      <li>Buka filenya</li>
-      <li>Seret aplikasi "RAW File Copy Tool" ke folder <strong>Applications</strong></li>
-      <li>Buka folder Applications di Finder</li>
-      <li>Buka Aplikasi</li>
-      <li>Jika muncul peringatan, klik <em>Open</em></li>
-      <li>Masukkan password mac</li>
-      <li>Masukkan serial number</li>
-      <li>Aplikasi siap digunakan</li>
-    </ol>
-
-    <hr style="margin: 25px 0;">
-
-    <p style="font-size:16px;">&#10067; Butuh bantuan atau ada pertanyaan? Langsung hubungi di Instagram
-      <a href="https://instagram.com/rawfilecopytool" style="color:#1155cc;">@rawfilecopytool</a>
-      atau
-      <a href="https://instagram.com/ryanekopram" style="color:#1155cc;">@ryanekopram</a>
-    </p>
-
-    <p style="font-size:16px; margin-top:15px;">Enjoy from dev, Ryan Eko &#9889;</p>
-</body>
-</html>`;
-}
-
-export function rawFileCopyMontereyTemplate(params: LicenseEmailParams): string {
-    const { customerName, serialKeys, downloadLinks } = params;
-    const serialHtml = serialKeys.map((key, i) =>
-        `<p style="font-size:18px; color:#f57c00; font-weight:bold; letter-spacing:1px;">${key}${serialKeys.length > 1 ? ` <span style="color:#666; font-size:12px; margin-left:10px;">License #${i + 1}</span>` : ''}</p>`
-    ).join('');
-
-    return `<!DOCTYPE html>
-<html>
-<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; font-size: 15px;">
-    <div style="margin-bottom: 25px;">
-      <img src="https://raw.githubusercontent.com/ryanekop/RAWFileCopyTool/refs/heads/main/Ryanekopram%20logo.png" width="220" style="margin-right:10px;">
-      <img src="https://raw.githubusercontent.com/ryanekop/RAWFileCopyTool/refs/heads/main/512.png" width="48" alt="icon">
-    </div>
-
-    <p style="font-size:16px;">Halo <b>${customerName}</b>!</p>
-    <p style="font-size:16px;">
-      Terima kasih banyak atas kepercayaannya untuk membeli software
-      <strong>RAW File Copy Tool (Monterey)</strong>.
-    </p>
-
-    <p style="font-size:16px;">Silakan download software melalui link di bawah ini:</p>
-    <p style="font-size:17px; margin: 15px 0;">
-      <a href="${downloadLinks['macOS-Monterey'] || '#'}" style="color:#1155cc; text-decoration:none; font-weight:bold;" target="_blank">Link Download</a> - v2.6.4
-    </p>
-
-    <p style="font-size:16px; margin-top:20px;">&#128273; Serial Number:</p>
-    ${serialHtml}
-
-    <hr style="margin: 25px 0;">
-
-    <p style="font-size:18px; font-weight:bold;">&#127909; Video Tutorial Cara Install RAW File Copy Tool Mac Monterey</p>
-    <p><a href="https://www.instagram.com/p/DQWhCrGk8SH/" target="_blank" style="font-size:17px; margin: 15px 0; color:#1155cc; font-weight:bold;">Klik untuk menonton video</a></p>
-    <p style="font-size:18px; font-weight:bold;">&#128640; Cara Install RAW File Copy Tool Mac Monterey</p>
-    <ol style="font-size:16px; padding-left:20px; margin:10px 0;">
-      <li>Buka filenya</li>
-      <li>Seret aplikasi "RAW File Copy Tool" ke folder <strong>Applications</strong></li>
-      <li>Buka folder Applications di Finder</li>
-      <li>Buka Aplikasi</li>
-      <li>Jika muncul peringatan, klik <em>Open</em></li>
-      <li>Masukkan password mac</li>
-      <li>Masukkan serial number</li>
-      <li>Aplikasi siap digunakan</li>
-    </ol>
-
-    <hr style="margin: 25px 0;">
-
-    <p style="font-size:16px;">&#10067; Butuh bantuan? Hubungi Instagram
-      <a href="https://instagram.com/rawfilecopytool" style="color:#1155cc;">@rawfilecopytool</a>
-      atau
-      <a href="https://instagram.com/ryanekopram" style="color:#1155cc;">@ryanekopram</a>
-    </p>
-
-    <p style="font-size:16px; margin-top:15px;">Enjoy from dev, Ryan Eko &#9889;</p>
-</body>
-</html>`;
-}
-
-export function rawFileCopyWindowsTemplate(params: LicenseEmailParams): string {
-    const { customerName, serialKeys, downloadLinks } = params;
-    const serialHtml = serialKeys.map((key, i) =>
-        `<p style="font-size:18px; color:#f57c00; font-weight:bold; letter-spacing:1px;">${key}${serialKeys.length > 1 ? ` <span style="color:#666; font-size:12px; margin-left:10px;">License #${i + 1}</span>` : ''}</p>`
-    ).join('');
-
-    return `<!DOCTYPE html>
-<html>
-<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; font-size: 15px;">
-    <div style="margin-bottom: 25px;">
-      <img src="https://raw.githubusercontent.com/ryanekop/RAWFileCopyTool/refs/heads/main/Ryanekopram%20logo.png" width="220" style="margin-right:10px;">
-      <img src="https://raw.githubusercontent.com/ryanekop/RAWFileCopyTool/refs/heads/main/512.png" width="48" alt="icon">
-    </div>
-
-    <p style="font-size:16px;">Halo <b>${customerName}</b>!</p>
-    <p style="font-size:16px;">
-      Terima kasih banyak atas kepercayaannya untuk membeli software
-      <strong>RAW File Copy Tool (Windows)</strong>.
-    </p>
-
-    <p style="font-size:16px;">Silakan download software melalui link di bawah ini:</p>
-    <p style="font-size:17px; margin: 15px 0;">
-      <a href="${downloadLinks['Windows'] || '#'}" style="color:#1155cc; text-decoration:none; font-weight:bold;" target="_blank">Link Download</a> - v2.6.4
-    </p>
-
-    <p style="font-size:16px; margin-top:20px;">&#128273; Kode Aktivasi:</p>
-    ${serialHtml}
-
-    <hr style="margin: 25px 0;">
-
-    <p style="font-size:18px; font-weight:bold;">&#127909; Video Tutorial Cara Install RAW File Copy Tool Windows</p>
-    <p><a href="https://www.instagram.com/p/DPoZAedk8Ot/" target="_blank" style="font-size:17px; margin: 15px 0; color:#1155cc; font-weight:bold;">Klik untuk menonton video</a></p>
-    <p style="font-size:18px; font-weight:bold;">&#128640; Cara Install RAW File Copy Tool Windows</p>
-    <ol style="font-size:16px; padding-left:20px; margin:10px 0;">
-      <li>Buka filenya</li>
-      <li>Jika ada warning, klik <i>More info > Open anyway</i></li>
-      <li>Install aplikasi seperti biasa</li>
-      <li>Masukkan serial number</li>
-      <li>Aplikasi siap digunakan</li>
-    </ol>
-
-    <hr style="margin: 25px 0;">
-
-    <p style="font-size:16px;">&#10067; Butuh bantuan atau ada pertanyaan? Langsung hubungi di Instagram
-      <a href="https://instagram.com/rawfilecopytool" style="color:#1155cc;">@rawfilecopytool</a>
-      atau
-      <a href="https://instagram.com/ryanekopram" style="color:#1155cc;">@ryanekopram</a>
-    </p>
-
-    <p style="font-size:16px; margin-top:15px;">Enjoy from dev, Ryan Eko &#9889;</p>
-</body>
-</html>`;
-}
-
-// Combined template for RAW File Copy — includes all platform download links
 export function rawFileCopyAllPlatformsTemplate(params: LicenseEmailParams): string {
     const { customerName, serialKeys, downloadLinks } = params;
     const serialHtml = serialKeys.map((key, i) =>
@@ -192,9 +23,8 @@ export function rawFileCopyAllPlatformsTemplate(params: LicenseEmailParams): str
         </td></tr>`
     ).join('');
 
-    const macLink = downloadLinks['macOS'];
-    const montereyLink = downloadLinks['macOS-Monterey'];
-    const windowsLink = downloadLinks['Windows'];
+    // Use "main" link (consolidated) or fallback to macOS if main missing
+    const mainLink = downloadLinks['main'] || downloadLinks['macOS'] || '#';
 
     return `<!DOCTYPE html>
 <html>
@@ -210,11 +40,13 @@ export function rawFileCopyAllPlatformsTemplate(params: LicenseEmailParams): str
       <strong>RAW File Copy Tool</strong>.
     </p>
 
-    <p style="font-size:16px;">Silakan download software sesuai platform yang digunakan:</p>
-    <div style="margin: 15px 0;">
-      ${macLink ? `<p style="font-size:16px; margin: 8px 0;">&#128187; <a href="${macLink}" style="color:#1155cc; text-decoration:none; font-weight:bold;" target="_blank">Download Mac (Ventura+)</a></p>` : ''}
-      ${montereyLink ? `<p style="font-size:16px; margin: 8px 0;">&#128187; <a href="${montereyLink}" style="color:#1155cc; text-decoration:none; font-weight:bold;" target="_blank">Download Mac (Monterey)</a></p>` : ''}
-      ${windowsLink ? `<p style="font-size:16px; margin: 8px 0;">&#128187; <a href="${windowsLink}" style="color:#1155cc; text-decoration:none; font-weight:bold;" target="_blank">Download Windows</a></p>` : ''}
+    <div style="margin-bottom:20px;">
+      <p style="font-size:16px;">Silakan download software melalui link di bawah ini:</p>
+      <p style="font-size:17px; margin: 10px 0;">
+        <a href="${mainLink}" style="color:#1155cc; text-decoration:none; font-weight:bold;" target="_blank">
+          &#128190; Download RAW File Copy Tool
+        </a>
+      </p>
     </div>
 
     <div style="margin-top:25px;">
@@ -256,7 +88,7 @@ export function realtimeUploadTemplate(params: LicenseEmailParams): string {
         </td></tr>`
     ).join('');
 
-    const mainDownload = downloadLinks['macOS'] || '';
+    const mainDownload = downloadLinks['main'] || downloadLinks['macOS'] || '';
     const showPlugin = includesPlugin && pluginUrl;
 
     return `<!DOCTYPE html>
@@ -354,7 +186,7 @@ export function photoSplitTemplate(params: LicenseEmailParams): string {
         </td></tr>`
     ).join('');
 
-    const mainDownload = downloadLinks['macOS'] || '';
+    const mainDownload = downloadLinks['main'] || downloadLinks['macOS'] || '';
 
     return `<!DOCTYPE html>
 <html>

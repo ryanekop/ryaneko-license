@@ -27,9 +27,7 @@ INSERT INTO products (name, slug, detection_keywords, download_urls, has_plugin,
   'raw-file-copy-tool',
   ARRAY['raw file copy', 'rawfilecopytool'],
   '{
-    "macOS": "https://drive.google.com/file/d/1eWhDNMvUmPkFESU7Wcq0BGjGOU5C_1bP/view?usp=sharing",
-    "macOS-Monterey": "https://drive.google.com/file/d/YOUR_MONTEREY_LINK/view",
-    "Windows": "https://drive.google.com/file/d/YOUR_WINDOWS_LINK/view"
+    "main": "https://drive.google.com/drive/folders/10ujMTzZPuR31TSsu59uHl3NJ093Hn0Ix?usp=sharing"
   }',
   false,
   NULL
@@ -39,8 +37,7 @@ INSERT INTO products (name, slug, detection_keywords, download_urls, has_plugin,
   'realtime-upload-pro',
   ARRAY['realtime upload', 'ru pro'],
   '{
-    "macOS": "https://drive.google.com/drive/folders/1JsEirrSjVjcVZG-X_MX9LsQP9b9i87lN?usp=sharing",
-    "Windows": ""
+    "main": "https://drive.google.com/drive/folders/1JsEirrSjVjcVZG-X_MX9LsQP9b9i87lN?usp=sharing"
   }',
   true,
   'https://drive.google.com/drive/folders/1MdXSsgY1jOOAu1vG4RUA-keigO2Y6Oyi?usp=sharing'
@@ -50,8 +47,7 @@ INSERT INTO products (name, slug, detection_keywords, download_urls, has_plugin,
   'photo-split-express',
   ARRAY['photo split'],
   '{
-    "macOS": "https://drive.google.com/drive/folders/16AjYHWxAeECvEIXUnsPfmVk_8aaz6iG-?usp=sharing",
-    "Windows": ""
+    "main": "https://drive.google.com/drive/folders/16AjYHWxAeECvEIXUnsPfmVk_8aaz6iG-?usp=sharing"
   }',
   false,
   NULL

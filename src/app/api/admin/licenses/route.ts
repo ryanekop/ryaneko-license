@@ -63,6 +63,12 @@ export async function GET(request: NextRequest) {
         query = query.or('status.neq.available,customer_name.not.is.null,customer_email.not.is.null,device_type.not.is.null');
     }
 
+    const deviceFilter = searchParams.get('device');
+    if (deviceFilter && deviceFilter !== 'all') {
+        // Use ilike to match variants like "Mac (Monterey)" when filtering by "Mac"
+        query = query.ilike('device_type', `${deviceFilter}%`);
+    }
+
     const sort = searchParams.get('sort');
     const ascending = sort === 'asc';
 
