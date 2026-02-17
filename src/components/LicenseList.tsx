@@ -102,6 +102,9 @@ const Icons = {
     chevronRight: (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
     ),
+    instagram: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="20" x="2" y="2" rx="5" ry="5" /><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" /><line x1="17.5" x2="17.51" y1="6.5" y2="6.5" /></svg>
+    ),
 };
 
 // --- PORTAL DIALOG COMPONENT ---
@@ -145,7 +148,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [statusFilter, setStatusFilter] = useState('all');
     const [deviceFilter, setDeviceFilter] = useState('all');
     const [sortAsc, setSortAsc] = useState(false);
-    const [showEmpty, setShowEmpty] = useState(false);
+    const [dataFilter, setDataFilter] = useState('with-data');
 
     const [changeDialog, setChangeDialog] = useState<License | null>(null);
     const [resetDialog, setResetDialog] = useState<License | null>(null);
@@ -169,7 +172,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                 status: statusFilter,
                 sort: sortAsc ? 'asc' : 'desc',
                 ...(search && { search }),
-                ...(!showEmpty && { hideEmpty: 'true' }),
+                ...(dataFilter !== 'all' && { dataFilter }),
                 ...(deviceFilter !== 'all' && { device: deviceFilter }),
             });
 
@@ -186,7 +189,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
         } finally {
             setLoading(false);
         }
-    }, [productSlug, page, search, statusFilter, deviceFilter, sortAsc, showEmpty]);
+    }, [productSlug, page, search, statusFilter, deviceFilter, sortAsc, dataFilter]);
 
     useEffect(() => {
         fetchLicenses();
@@ -326,17 +329,19 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                     </div>
                     {/* Action buttons row */}
                     <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                            onClick={() => { setShowEmpty(!showEmpty); setPage(1); }}
-                            className={`px-3 py-2 border rounded-lg text-xs sm:text-sm cursor-pointer transition-all active:scale-95 flex items-center gap-1.5 shadow-[var(--shadow)] font-medium ${showEmpty
-                                ? 'bg-bg-card border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
-                                : 'bg-accent text-accent-fg border-accent'
+                        <select
+                            value={dataFilter}
+                            onChange={(e) => { setDataFilter(e.target.value); setPage(1); }}
+                            className={`px-3 py-2 border rounded-lg text-xs sm:text-sm cursor-pointer transition-all active:scale-95 shadow-[var(--shadow)] font-medium appearance-none pr-7 bg-[length:12px] bg-[right_8px_center] bg-no-repeat ${dataFilter !== 'with-data'
+                                ? 'bg-accent text-accent-fg border-accent'
+                                : 'bg-bg-card border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
                                 }`}
-                            title={showEmpty ? 'Hide empty serials' : 'Show empty serials'}
+                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${dataFilter !== 'with-data' ? 'white' : '%236b7280'}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")` }}
                         >
-                            {showEmpty ? Icons.eye : Icons.eyeOff}
-                            <span className="hidden sm:inline">{showEmpty ? (t('list.showEmpty') || 'Serial Kosong') : (t('list.hideEmpty') || 'Sembunyikan')}</span>
-                        </button>
+                            <option value="with-data">{t('list.filterWithData')}</option>
+                            <option value="empty">{t('list.filterEmpty')}</option>
+                            <option value="all">{t('list.filterAll')}</option>
+                        </select>
                         <select
                             value={deviceFilter}
                             onChange={(e) => { setDeviceFilter(e.target.value); setPage(1); }}
@@ -402,7 +407,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                             <th className="px-4 py-3 font-medium">{t('list.status')}</th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.user} {t('list.name')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.mail} {t('list.email')}</span></th>
-                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">📸 {t('list.instagram')}</span></th>
+                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.instagram} {t('list.instagram')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.monitor} {t('list.device')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.fingerprint} {t('list.deviceId')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.calendar} {t('list.activated')}</span></th>

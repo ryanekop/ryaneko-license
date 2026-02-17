@@ -56,12 +56,15 @@ export async function GET(request: NextRequest) {
         );
     }
 
-    const hideEmpty = searchParams.get('hideEmpty');
-    if (hideEmpty === 'true') {
-        // Only hide serials that are truly empty: available AND no customer data at all
-        // Show rows where: status != available OR has customer_name OR has customer_email OR has device_type
+    const dataFilter = searchParams.get('dataFilter');
+    if (dataFilter === 'with-data') {
+        // Show only licenses that have customer data (used + available with names)
         query = query.or('status.neq.available,customer_name.not.is.null,customer_email.not.is.null,device_type.not.is.null');
+    } else if (dataFilter === 'empty') {
+        // Show only truly empty serials: available AND no customer data
+        query = query.eq('status', 'available').is('customer_name', null).is('customer_email', null).is('device_type', null);
     }
+    // 'all' or not provided = no filter
 
     const deviceFilter = searchParams.get('device');
     if (deviceFilter && deviceFilter !== 'all') {
