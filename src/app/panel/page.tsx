@@ -45,49 +45,56 @@ const EXTERNAL_LINKS = [
     },
     {
         name: 'Server Hostingan.id',
-        url: 'https://my.hostingan.id/clientarea.php?action=productdetails&id=5733',
+        url: 'https://my.hostingan.id/',
         iconUrl: 'https://www.google.com/s2/favicons?domain=hostingan.id&sz=128',
         color: 'text-orange-600',
         bg: 'bg-orange-600/5'
     },
     {
         name: 'Domainesia.com',
-        url: 'https://my.domainesia.com/clientarea.php?action=domaindns',
+        url: 'https://my.domainesia.com/',
         iconUrl: 'https://www.google.com/s2/favicons?domain=domainesia.com&sz=128',
         color: 'text-sky-600',
         bg: 'bg-sky-600/5'
     },
     {
         name: 'Supabase',
-        url: 'https://supabase.com/dashboard/org/kseeljmrngtmvmkiexad',
+        url: 'https://supabase.com/dashboard/',
         iconUrl: 'https://www.google.com/s2/favicons?domain=supabase.com&sz=128',
         color: 'text-emerald-600',
         bg: 'bg-emerald-600/5'
     },
     {
+        name: 'Resend',
+        url: 'https://resend.com/',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=resend.com&sz=128',
+        color: 'text-purple-600',
+        bg: 'bg-purple-600/5'
+    },
+    {
         name: 'Cloudflare Workers',
-        url: 'https://dash.cloudflare.com/b2d74627e32503857472817ed109d920/workers-and-pages',
+        url: 'https://dash.cloudflare.com/',
         iconUrl: 'https://www.google.com/s2/favicons?domain=cloudflare.com&sz=128',
         color: 'text-amber-600',
         bg: 'bg-amber-600/5'
     },
     {
         name: 'Pagespeed',
-        url: 'https://pagespeed.web.dev/analysis/https-fastpik-ryanekoapp-web-id/bb7i7r83tf?form_factor=mobile',
+        url: 'https://pagespeed.web.dev/',
         iconUrl: 'https://www.google.com/s2/favicons?domain=web.dev&sz=128',
         color: 'text-indigo-600',
         bg: 'bg-indigo-600/5'
     },
     {
         name: 'Analytics Umami',
-        url: 'https://cloud.umami.is/analytics/us/websites/14ffd81f-07b2-4cc0-b72b-7b8aa4e864a0?path=eq.%2Fid%2Fclient%2Faloragraduation%2FAE8mr66C8Pky',
+        url: 'https://cloud.umami.is/',
         iconUrl: 'https://www.google.com/s2/favicons?domain=umami.is&sz=128',
         color: 'text-pink-600',
         bg: 'bg-pink-600/5'
     },
     {
         name: 'Uptime Robot',
-        url: 'https://dashboard.uptimerobot.com/monitors',
+        url: 'https://dashboard.uptimerobot.com/',
         iconUrl: 'https://www.google.com/s2/favicons?domain=uptimerobot.com&sz=128',
         color: 'text-green-600',
         bg: 'bg-green-600/5'
