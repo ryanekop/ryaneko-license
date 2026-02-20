@@ -2,12 +2,12 @@
 // Converted from GAS HTML templates to TypeScript functions
 
 interface LicenseEmailParams {
-    customerName: string;
-    serialKeys: string[];
-    productName: string;
-    downloadLinks: Record<string, string>;
-    pluginUrl?: string;
-    includesPlugin: boolean;
+  customerName: string;
+  serialKeys: string[];
+  productName: string;
+  downloadLinks: Record<string, string>;
+  pluginUrl?: string;
+  includesPlugin: boolean;
 }
 
 // =============================================
@@ -15,23 +15,22 @@ interface LicenseEmailParams {
 // =============================================
 
 export function rawFileCopyAllPlatformsTemplate(params: LicenseEmailParams): string {
-    const { customerName, serialKeys, downloadLinks } = params;
-    const serialHtml = serialKeys.map((key, i) =>
-        `<tr><td style="background:#eee; padding:10px 15px; border-radius:6px;">
+  const { customerName, serialKeys, downloadLinks } = params;
+  const serialHtml = serialKeys.map((key, i) =>
+    `<tr><td style="background:#eee; padding:10px 15px; border-radius:6px;">
           <span style="font-size:18px; color:#f57c00; font-weight:bold; letter-spacing:1px;">${key}</span>
           ${serialKeys.length > 1 ? `<span style="color:#666; font-size:12px; margin-left:10px;">License #${i + 1}</span>` : ''}
         </td></tr>`
-    ).join('');
+  ).join('');
 
-    // Use "main" link (consolidated) or fallback to macOS if main missing
-    const mainLink = downloadLinks['main'] || downloadLinks['macOS'] || '#';
+  // Use "main" link (consolidated) or fallback to macOS if main missing
+  const mainLink = downloadLinks['main'] || downloadLinks['macOS'] || '#';
 
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
 <body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; font-size: 15px;">
     <div style="margin-bottom: 25px;">
-      <img src="https://raw.githubusercontent.com/ryanekop/RAWFileCopyTool/refs/heads/main/Ryanekopram%20logo.png" width="220" style="margin-right:10px;">
-      <img src="https://raw.githubusercontent.com/ryanekop/RAWFileCopyTool/refs/heads/main/512.png" width="48" alt="icon">
+      <img src="https://ryanekoapp.web.id/images/logo-license.png" width="220">
     </div>
 
     <p style="font-size:16px;">Halo <b>${customerName}</b>!</p>
@@ -80,22 +79,22 @@ export function rawFileCopyAllPlatformsTemplate(params: LicenseEmailParams): str
 // =============================================
 
 export function realtimeUploadTemplate(params: LicenseEmailParams): string {
-    const { customerName, serialKeys, productName, downloadLinks, pluginUrl, includesPlugin } = params;
-    const serialHtml = serialKeys.map((key, i) =>
-        `<tr><td style="background:#eee; padding:10px 15px; border-radius:6px;">
+  const { customerName, serialKeys, productName, downloadLinks, pluginUrl, includesPlugin } = params;
+  const serialHtml = serialKeys.map((key, i) =>
+    `<tr><td style="background:#eee; padding:10px 15px; border-radius:6px;">
           <span style="font-size:18px; color:#f57c00; font-weight:bold; letter-spacing:1px;">${key}</span>
           ${serialKeys.length > 1 ? `<span style="color:#666; font-size:12px; margin-left:10px;">License #${i + 1}</span>` : ''}
         </td></tr>`
-    ).join('');
+  ).join('');
 
-    const mainDownload = downloadLinks['main'] || downloadLinks['macOS'] || '';
-    const showPlugin = includesPlugin && pluginUrl;
+  const mainDownload = downloadLinks['main'] || downloadLinks['macOS'] || '';
+  const showPlugin = includesPlugin && pluginUrl;
 
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
 <body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; font-size: 15px;">
     <div style="margin-bottom: 25px;">
-      <img src="https://raw.githubusercontent.com/ryanekop/RAWFileCopyTool/refs/heads/main/Ryanekopram%20logo.png" width="220" style="margin-right:10px;">
+      <img src="https://ryanekoapp.web.id/images/logo-license.png" width="220" style="margin-right:10px;">
     </div>
 
     <p style="font-size:16px;">Halo <b>${customerName}</b>!</p>
@@ -178,21 +177,21 @@ export function realtimeUploadTemplate(params: LicenseEmailParams): string {
 // =============================================
 
 export function photoSplitTemplate(params: LicenseEmailParams): string {
-    const { customerName, serialKeys, downloadLinks } = params;
-    const serialHtml = serialKeys.map((key, i) =>
-        `<tr><td style="background:#eee; padding:10px 15px; border-radius:6px;">
+  const { customerName, serialKeys, downloadLinks } = params;
+  const serialHtml = serialKeys.map((key, i) =>
+    `<tr><td style="background:#eee; padding:10px 15px; border-radius:6px;">
           <span style="font-size:18px; color:#f57c00; font-weight:bold; letter-spacing:1px;">${key}</span>
           ${serialKeys.length > 1 ? `<span style="color:#666; font-size:12px; margin-left:10px;">License #${i + 1}</span>` : ''}
         </td></tr>`
-    ).join('');
+  ).join('');
 
-    const mainDownload = downloadLinks['main'] || downloadLinks['macOS'] || '';
+  const mainDownload = downloadLinks['main'] || downloadLinks['macOS'] || '';
 
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
 <body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; font-size: 15px;">
     <div style="margin-bottom: 25px;">
-      <img src="https://raw.githubusercontent.com/ryanekop/RAWFileCopyTool/refs/heads/main/Ryanekopram%20logo.png" width="220" style="margin-right:10px;">
+      <img src="https://ryanekoapp.web.id/images/logo-license.png" width="220" style="margin-right:10px;">
     </div>
 
     <p style="font-size:16px;">Halo <b>${customerName}</b>!</p>
@@ -250,34 +249,34 @@ export function photoSplitTemplate(params: LicenseEmailParams): string {
 // =============================================
 
 export function getEmailHtml(
-    productSlug: string,
-    params: LicenseEmailParams
+  productSlug: string,
+  params: LicenseEmailParams
 ): string {
-    switch (productSlug) {
-        case 'raw-file-copy-tool':
-            // At purchase time we don't know the platform, send all-platforms email
-            return rawFileCopyAllPlatformsTemplate(params);
-        case 'realtime-upload-pro':
-            return realtimeUploadTemplate(params);
-        case 'photo-split-express':
-            return photoSplitTemplate(params);
-        default:
-            // Fallback: use realtime upload template as generic
-            return realtimeUploadTemplate(params);
-    }
+  switch (productSlug) {
+    case 'raw-file-copy-tool':
+      // At purchase time we don't know the platform, send all-platforms email
+      return rawFileCopyAllPlatformsTemplate(params);
+    case 'realtime-upload-pro':
+      return realtimeUploadTemplate(params);
+    case 'photo-split-express':
+      return photoSplitTemplate(params);
+    default:
+      // Fallback: use realtime upload template as generic
+      return realtimeUploadTemplate(params);
+  }
 }
 
 export function getEmailSubject(productSlug: string, includesPlugin: boolean): string {
-    switch (productSlug) {
-        case 'raw-file-copy-tool':
-            return '🔑 Lisensi RAW File Copy Tool';
-        case 'realtime-upload-pro':
-            return includesPlugin
-                ? '🔑 Lisensi Realtime Upload Pro + Plugin'
-                : '🔑 Lisensi Realtime Upload Pro';
-        case 'photo-split-express':
-            return '🔑 Lisensi Photo Split Express';
-        default:
-            return '🔑 Lisensi Software Anda';
-    }
+  switch (productSlug) {
+    case 'raw-file-copy-tool':
+      return '🔑 Lisensi RAW File Copy Tool';
+    case 'realtime-upload-pro':
+      return includesPlugin
+        ? '🔑 Lisensi Realtime Upload Pro + Plugin'
+        : '🔑 Lisensi Realtime Upload Pro';
+    case 'photo-split-express':
+      return '🔑 Lisensi Photo Split Express';
+    default:
+      return '🔑 Lisensi Software Anda';
+  }
 }
