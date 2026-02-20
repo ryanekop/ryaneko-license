@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { notifyAlert } from '@/lib/telegram';
+import { createRateLimiter, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 import type { VerifyRequest, VerifyResponse, License } from '@/lib/types';
+
+// 30 requests per minute per IP
+const verifyLimiter = createRateLimiter({ limit: 30, windowMs: 60_000 });
 
 export async function POST(request: NextRequest) {
     try {
+        // Rate limit check
+        const ip = getClientIp(request);
+        const { allowed, retryAfterMs } = verifyLimiter.check(ip);
+        if (!allowed) {
+            return rateLimitResponse(retryAfterMs);
+        }
+
         const body: VerifyRequest = await request.json();
         const { serial_key, device_id } = body;
 
@@ -16,10 +27,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Get client IP
-        const ip = request.headers.get('x-forwarded-for') ||
-            request.headers.get('x-real-ip') ||
-            'unknown';
+        // ip already extracted via getClientIp() above
 
         // Find license by serial key
         const { data: license, error: findError } = await supabaseAdmin

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateDeviceHash, verifyHash } from '@/lib/crypto';
 import { notifyActivation, notifyAlert } from '@/lib/telegram';
+import { createRateLimiter, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 import type { ActivationRequest, ActivationResponse, License } from '@/lib/types';
+
+// 10 requests per minute per IP (strict — activation is a rare action)
+const activateLimiter = createRateLimiter({ limit: 10, windowMs: 60_000 });
 
 /**
  * Normalize device_type from OS-reported values to consistent display format.
@@ -38,6 +42,13 @@ function normalizeDeviceType(raw: string): string {
 
 export async function POST(request: NextRequest) {
     try {
+        // Rate limit check
+        const ip = getClientIp(request);
+        const { allowed, retryAfterMs } = activateLimiter.check(ip);
+        if (!allowed) {
+            return rateLimitResponse(retryAfterMs);
+        }
+
         const body: ActivationRequest = await request.json();
         const { serial_key, device_id, device_type: rawDeviceType, os_version } = body;
 
@@ -52,10 +63,7 @@ export async function POST(request: NextRequest) {
         // Normalize device type for consistent display
         const device_type = normalizeDeviceType(rawDeviceType);
 
-        // Get client IP
-        const ip = request.headers.get('x-forwarded-for') ||
-            request.headers.get('x-real-ip') ||
-            'unknown';
+        // ip already extracted via getClientIp() above
 
         // Find license by serial key
         const { data: license, error: findError } = await supabaseAdmin
