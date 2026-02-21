@@ -105,6 +105,7 @@ export default function FastpikPage() {
     const [error, setError] = useState('');
     const [sortAsc, setSortAsc] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [filterTier, setFilterTier] = useState<string>('all');
 
     // Create form
     const [showCreate, setShowCreate] = useState(false);
@@ -142,9 +143,20 @@ export default function FastpikPage() {
     useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
     const filteredUsers = users.filter((u) => {
-        if (!searchQuery.trim()) return true;
-        const q = searchQuery.toLowerCase();
-        return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+        // Search filter
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            if (!u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false;
+        }
+        // Tier filter
+        if (filterTier !== 'all') {
+            if (filterTier === 'trial') {
+                if (!(u.tier === 'free' || u.status === 'trial')) return false;
+            } else {
+                if (u.tier !== filterTier) return false;
+            }
+        }
+        return true;
     });
 
     const sortedUsers = [...filteredUsers].sort((a, b) => {
@@ -277,6 +289,32 @@ export default function FastpikPage() {
                 />
             </div>
 
+            {/* Tier Filter */}
+            <div className="flex flex-wrap gap-1.5">
+                {[
+                    { key: 'all', label: `📋 ${t('fastpik.filterAll')}` },
+                    { key: 'trial', label: '⏱️ Trial' },
+                    { key: 'pro_monthly', label: '🔥 Monthly' },
+                    { key: 'pro_quarterly', label: '🔥 Quarterly' },
+                    { key: 'pro_yearly', label: '🔥 Yearly' },
+                    { key: 'lifetime', label: '👑 Lifetime' },
+                ].map((f) => {
+                    const count = f.key === 'all' ? users.length : users.filter(u => f.key === 'trial' ? (u.tier === 'free' || u.status === 'trial') : u.tier === f.key).length;
+                    return (
+                        <button
+                            key={f.key}
+                            onClick={() => setFilterTier(f.key)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all active:scale-95 ${filterTier === f.key
+                                    ? 'bg-accent text-accent-fg shadow-sm'
+                                    : 'bg-bg-card border border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
+                                }`}
+                        >
+                            {f.label} ({count})
+                        </button>
+                    );
+                })}
+            </div>
+
             {/* Create Form */}
             {showCreate && (
                 <div className="bg-bg-card rounded-xl border border-border p-5 shadow-[var(--shadow)] animate-slide-up">
@@ -332,7 +370,7 @@ export default function FastpikPage() {
 
             {/* User Count */}
             <div className="flex items-center gap-2 text-fg-muted text-sm">
-                <UsersIcon /> {t('fastpik.userCount')}: <span className="font-semibold text-fg">{users.length}</span>
+                <UsersIcon /> {t('fastpik.userCount')}: <span className="font-semibold text-fg">{filteredUsers.length}</span>{filterTier !== 'all' && <span className="text-fg-muted"> / {users.length}</span>}
             </div>
 
             {/* Error */}
