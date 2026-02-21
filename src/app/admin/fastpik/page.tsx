@@ -361,6 +361,7 @@ export default function FastpikPage() {
                         <table className="w-full">
                             <thead className="sticky top-0 bg-bg-card z-10 border-b border-border">
                                 <tr className="text-left text-fg text-xs uppercase tracking-wider">
+                                    <th className="px-4 py-3 font-medium w-12">No.</th>
                                     <th className="px-4 py-3 font-medium">{t('fastpik.colName')}</th>
                                     <th className="px-4 py-3 font-medium">{t('fastpik.colEmail')}</th>
                                     <th className="px-4 py-3 font-medium">{t('fastpik.colPlan')}</th>
@@ -372,6 +373,7 @@ export default function FastpikPage() {
                             <tbody className="divide-y divide-border-light">
                                 {sortedUsers.map((user, i) => (
                                     <tr key={user.id} className="row-animate text-fg hover:bg-bg-secondary/50 transition-colors" style={{ animationDelay: `${i * 0.02}s` }}>
+                                        <td className="px-4 py-2.5 text-sm text-fg-muted">{i + 1}</td>
                                         <td className="px-4 py-2.5 text-sm font-medium">{user.name}</td>
                                         <td className="px-4 py-2.5 text-sm">{user.email}</td>
                                         <td className="px-4 py-2.5">{getTierBadge(user.tier, user.status)}</td>
