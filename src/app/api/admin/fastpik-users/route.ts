@@ -7,11 +7,17 @@ const fastpikSupabase = getFastpikSupabase();
 // GET - list users
 export async function GET() {
     try {
-        // Get all auth users
-        const { data: authData, error: authError } = await fastpikSupabase.auth.admin.listUsers();
-        if (authError) throw authError;
-
-        const authUsers = authData?.users || [];
+        // Get all auth users (paginated — Supabase defaults to 50 per page)
+        let authUsers: any[] = [];
+        let page = 1;
+        while (true) {
+            const { data: authData, error: authError } = await fastpikSupabase.auth.admin.listUsers({ page, perPage: 1000 });
+            if (authError) throw authError;
+            const users = authData?.users || [];
+            authUsers = authUsers.concat(users);
+            if (users.length < 1000) break;
+            page++;
+        }
 
         // Get subscriptions and profiles
         const { data: subscriptions } = await fastpikSupabase.from('subscriptions').select('user_id, tier, status, end_date, trial_end_date');
