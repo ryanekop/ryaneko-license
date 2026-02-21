@@ -12,6 +12,8 @@ interface UserData {
     tier: string;
     status: string;
     expiresAt: string | null;
+    lastSignIn: string | null;
+    emailConfirmed: boolean;
 }
 
 // SVG Icons
@@ -77,6 +79,14 @@ function getTierBadge(tier: string, status?: string) {
 function formatDate(dateString: string | null) {
     if (!dateString) return '—';
     return new Date(dateString).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatDateTime(dateString: string | null) {
+    if (!dateString) return null;
+    const d = new Date(dateString);
+    const date = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    const time = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return { date, time };
 }
 
 function isExpired(dateString: string | null) {
@@ -305,8 +315,8 @@ export default function FastpikPage() {
                             key={f.key}
                             onClick={() => setFilterTier(f.key)}
                             className={`px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all active:scale-95 ${filterTier === f.key
-                                    ? 'bg-accent text-accent-fg shadow-sm'
-                                    : 'bg-bg-card border border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
+                                ? 'bg-accent text-accent-fg shadow-sm'
+                                : 'bg-bg-card border border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
                                 }`}
                         >
                             {f.label} ({count})
@@ -405,6 +415,7 @@ export default function FastpikPage() {
                                     <th className="px-4 py-3 font-medium">{t('fastpik.colPlan')}</th>
                                     <th className="px-4 py-3 font-medium">{t('fastpik.colExpiry')}</th>
                                     <th className="px-4 py-3 font-medium">{t('fastpik.colRegistered')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('fastpik.colLastLogin')}</th>
                                     <th className="px-4 py-3 font-medium text-right">{t('fastpik.colActions')}</th>
                                 </tr>
                             </thead>
@@ -425,6 +436,18 @@ export default function FastpikPage() {
                                             )}
                                         </td>
                                         <td className="px-4 py-2.5 text-sm">{formatDate(user.createdAt)}</td>
+                                        <td className="px-4 py-2.5 text-sm">
+                                            {!user.emailConfirmed ? (
+                                                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400">⚠️ {t('fastpik.unverified')}</span>
+                                            ) : user.lastSignIn ? (
+                                                <div>
+                                                    <span>{formatDateTime(user.lastSignIn)?.date}</span>
+                                                    <span className="text-fg-muted ml-1 text-xs">{formatDateTime(user.lastSignIn)?.time}</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-fg-muted">—</span>
+                                            )}
+                                        </td>
                                         <td className="px-4 py-2.5 text-right">
                                             <div className="flex justify-end gap-1.5">
                                                 <button
@@ -468,6 +491,7 @@ export default function FastpikPage() {
                                     <div className="text-xs text-fg-muted space-y-0.5">
                                         <p>{t('fastpik.colExpiry')}: {user.tier === 'lifetime' ? <span className="text-amber-500">∞</span> : <span className={isExpired(user.expiresAt) ? 'text-danger' : ''}>{formatDate(user.expiresAt)}</span>}</p>
                                         <p>{t('fastpik.colRegistered')}: {formatDate(user.createdAt)}</p>
+                                        <p>{t('fastpik.colLastLogin')}: {!user.emailConfirmed ? <span className="text-red-500 font-medium">⚠️ {t('fastpik.unverified')}</span> : user.lastSignIn ? <span>{formatDateTime(user.lastSignIn)?.date} {formatDateTime(user.lastSignIn)?.time}</span> : '—'}</p>
                                     </div>
                                     <div className="flex gap-1.5">
                                         <button

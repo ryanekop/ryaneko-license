@@ -37,6 +37,8 @@ export async function GET() {
                 tier: subscription?.tier || 'none',
                 status: subscription?.status || 'inactive',
                 expiresAt: subscription?.end_date || subscription?.trial_end_date || null,
+                lastSignIn: user.last_sign_in_at || null,
+                emailConfirmed: !!user.email_confirmed_at,
             };
         });
 
