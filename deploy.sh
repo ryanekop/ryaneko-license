@@ -5,7 +5,7 @@
 set -e
 
 VPS_HOST="root@103.175.207.113"
-APP_DIR="/root/ryaneko-license"
+APP_DIR="/var/www/ryaneko-license"
 PM2_NAME="license"
 
 echo "🚀 Deploying ryaneko-license..."

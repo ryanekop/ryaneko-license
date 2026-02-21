@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+
 import Link from 'next/link';
 import { useTheme, useLang } from '@/lib/providers';
 
@@ -26,12 +26,6 @@ const ArrowLeftIcon = () => (
 const KeyIcon = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4" /><path d="m21 2-9.6 9.6" /><circle cx="7.5" cy="15.5" r="5.5" />
-    </svg>
-);
-
-const LogOutIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" />
     </svg>
 );
 
@@ -104,114 +98,6 @@ const EXTERNAL_LINKS = [
 export default function PanelPage() {
     const { theme, toggleTheme } = useTheme();
     const { lang, toggleLang, t } = useLang();
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
-    const [loginLoading, setLoginLoading] = useState(false);
-    const [showPassword, setShowPassword] = useState(false);
-
-    useEffect(() => {
-        const saved = sessionStorage.getItem('admin_auth');
-        if (saved === 'true') setIsAuthenticated(true);
-    }, []);
-
-    const handleLogin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
-        setLoginLoading(true);
-        await new Promise(resolve => setTimeout(resolve, 800));
-        try {
-            const res = await fetch('/api/admin/auth', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password }),
-            });
-            if (res.ok) {
-                setIsAuthenticated(true);
-                sessionStorage.setItem('admin_auth', 'true');
-            } else {
-                setError(t('login.error'));
-            }
-        } catch {
-            setError('Connection error');
-        } finally {
-            setLoginLoading(false);
-        }
-    };
-
-    if (!isAuthenticated) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-bg">
-                <div className="absolute top-4 right-4 flex gap-2">
-                    <button
-                        onClick={toggleTheme}
-                        className="w-9 h-9 flex items-center justify-center rounded-lg border border-border bg-bg-card text-fg-secondary cursor-pointer hover:bg-bg-secondary hover:text-fg transition-all active:scale-95"
-                    >
-                        {theme === 'light' ? <MoonIcon /> : <SunIcon />}
-                    </button>
-                    <button
-                        onClick={toggleLang}
-                        className="h-9 px-3 rounded-lg border border-border bg-bg-card text-fg-secondary text-xs font-semibold cursor-pointer hover:bg-bg-secondary hover:text-fg transition-all active:scale-95"
-                    >
-                        {lang === 'id' ? 'EN' : 'ID'}
-                    </button>
-                </div>
-
-                <div className="bg-bg-card p-8 rounded-2xl border border-border w-full max-w-sm mx-4 shadow-[var(--shadow-lg)] animate-fade-in-scale">
-                    <div className="text-center mb-8">
-                        <div className="flex justify-center mb-3 text-fg animate-fade-in"><KeyIcon /></div>
-                        <h1 className="text-2xl font-bold text-fg">{t('login.title')}</h1>
-                        <p className="text-fg-muted mt-1 text-sm">{t('panel.title')}</p>
-                    </div>
-
-                    <form onSubmit={handleLogin} className="space-y-4">
-                        <div className="relative">
-                            <input
-                                type={showPassword ? 'text' : 'password'}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder={t('login.placeholder')}
-                                disabled={loginLoading}
-                                className="w-full px-4 py-3 pr-11 bg-bg border border-border rounded-xl text-fg placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all disabled:opacity-50"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted cursor-pointer hover:text-fg transition-colors p-1"
-                                tabIndex={-1}
-                            >
-                                {showPassword ? (
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" /><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" /><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" /><path d="m2 2 20 20" /></svg>
-                                ) : (
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg>
-                                )}
-                            </button>
-                        </div>
-                        {error && (
-                            <div className="text-danger text-sm text-center animate-fade-in flex items-center justify-center gap-1.5">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="15" x2="9" y1="9" y2="15" /><line x1="9" x2="15" y1="9" y2="15" /></svg>
-                                {error}
-                            </div>
-                        )}
-                        <button
-                            type="submit"
-                            disabled={loginLoading || !password}
-                            className="w-full py-3 bg-accent text-accent-fg font-medium rounded-xl cursor-pointer hover:opacity-85 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                            {loginLoading ? (
-                                <>
-                                    <span className="w-4 h-4 border-2 border-accent-fg/30 border-t-accent-fg rounded-full animate-spin" />
-                                    {t('login.loading')}
-                                </>
-                            ) : (
-                                <>{t('login.button')}</>
-                            )}
-                        </button>
-                    </form>
-                </div>
-            </div>
-        );
-    }
 
     return (
         <div className="min-h-screen bg-bg">
@@ -227,7 +113,7 @@ export default function PanelPage() {
                                 <ArrowLeftIcon />
                             </Link>
                             <KeyIcon />
-                            <h1 className="text-base font-semibold tracking-tight">{t('panel.title')}</h1>
+                            <h1 className="text-base font-normal tracking-tight">{t('panel.title')}</h1>
                         </div>
                         <div className="flex items-center gap-2">
                             <button
@@ -242,15 +128,7 @@ export default function PanelPage() {
                             >
                                 {theme === 'light' ? <MoonIcon /> : <SunIcon />}
                             </button>
-                            <button
-                                onClick={() => {
-                                    sessionStorage.removeItem('admin_auth');
-                                    setIsAuthenticated(false);
-                                }}
-                                className="ml-1 h-8 px-3 text-xs text-danger border border-border rounded-lg cursor-pointer hover:bg-danger/10 hover:border-danger/30 transition-all active:scale-95 flex items-center gap-1.5 font-medium"
-                            >
-                                <LogOutIcon /> {t('header.logout')}
-                            </button>
+
                         </div>
                     </div>
                 </div>
@@ -258,7 +136,7 @@ export default function PanelPage() {
 
             <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-12 animate-fade-in">
                 <div className="mb-12 text-center">
-                    <h2 className="text-3xl font-bold text-fg tracking-tight">{t('panel.title')}</h2>
+                    <h2 className="text-3xl font-normal text-fg tracking-tight">{t('panel.title')}</h2>
                     <p className="text-fg-muted mt-2 max-w-lg mx-auto">{t('panel.desc')}</p>
                 </div>
 
