@@ -113,7 +113,7 @@ export default function PanelPage() {
                                 <ArrowLeftIcon />
                             </Link>
                             <KeyIcon />
-                            <h1 className="text-base font-normal tracking-tight">{t('panel.title')}</h1>
+                            <h1 className="text-base font-semibold tracking-tight">{t('panel.title')}</h1>
                         </div>
                         <div className="flex items-center gap-2">
                             <button
@@ -136,7 +136,7 @@ export default function PanelPage() {
 
             <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-12 animate-fade-in">
                 <div className="mb-12 text-center">
-                    <h2 className="text-3xl font-normal text-fg tracking-tight">{t('panel.title')}</h2>
+                    <h2 className="text-3xl font-bold text-fg tracking-tight">{t('panel.title')}</h2>
                     <p className="text-fg-muted mt-2 max-w-lg mx-auto">{t('panel.desc')}</p>
                 </div>
 
