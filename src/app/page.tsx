@@ -83,7 +83,7 @@ export default function Home() {
 
           <Link
             href="/panel"
-            className="px-6 py-3.5 bg-bg-card text-fg font-semibold rounded-xl cursor-pointer hover:bg-bg-secondary transition-all border border-border active:scale-[0.98] flex items-center justify-center gap-2"
+            className="px-6 py-3.5 bg-bg-card text-fg font-medium rounded-xl cursor-pointer hover:bg-bg-secondary transition-all border border-border active:scale-[0.98] flex items-center justify-center gap-2"
           >
             <GridIcon /> {t('home.panel')}
           </Link>
