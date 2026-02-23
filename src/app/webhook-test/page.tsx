@@ -147,6 +147,24 @@ const KeyIcon = () => (
     </svg>
 );
 
+const ChevronDownIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m6 9 6 6 6-6" />
+    </svg>
+);
+
+const SettingsMenuIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />
+    </svg>
+);
+
+const GridMenuIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" />
+    </svg>
+);
+
 const SunIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />
@@ -174,6 +192,7 @@ export default function WebhookTestPage() {
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [activePreset, setActivePreset] = useState(0);
     const [copied, setCopied] = useState(false);
+    const [navOpen, setNavOpen] = useState(false);
 
     useEffect(() => {
         const saved = sessionStorage.getItem('admin_auth');
@@ -364,13 +383,81 @@ export default function WebhookTestPage() {
                 >
                     <ArrowLeftIcon />
                 </Link>
-                <div style={{ flex: 1 }}>
-                    <h1 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--fg)', margin: 0 }}>
-                        Webhook Tester
-                    </h1>
-                    <p style={{ fontSize: '12px', color: 'var(--fg-muted)', margin: 0 }}>
-                        Unified Mayar Webhook — v2.0
-                    </p>
+                <div style={{ flex: 1, position: 'relative' }}>
+                    <button
+                        onClick={() => setNavOpen(!navOpen)}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            color: 'inherit',
+                        }}
+                    >
+                        <div>
+                            <h1 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--fg)', margin: 0, textAlign: 'left' }}>
+                                Webhook Tester
+                            </h1>
+                            <p style={{ fontSize: '12px', color: 'var(--fg-muted)', margin: 0, textAlign: 'left' }}>
+                                Unified Mayar Webhook — v2.0
+                            </p>
+                        </div>
+                        <ChevronDownIcon />
+                    </button>
+                    {navOpen && (
+                        <>
+                            <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setNavOpen(false)} />
+                            <div className="animate-fade-in" style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                marginTop: '8px',
+                                width: '224px',
+                                background: 'var(--bg-card)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '12px',
+                                boxShadow: 'var(--shadow-lg)',
+                                zIndex: 50,
+                                padding: '6px 0',
+                            }}>
+                                <Link
+                                    href="/admin"
+                                    onClick={() => setNavOpen(false)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        padding: '10px 16px',
+                                        fontSize: '14px',
+                                        color: 'var(--fg)',
+                                        textDecoration: 'none',
+                                        transition: 'background 0.15s',
+                                    }}
+                                >
+                                    <SettingsMenuIcon /> {t('home.admin')}
+                                </Link>
+                                <Link
+                                    href="/panel"
+                                    onClick={() => setNavOpen(false)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        padding: '10px 16px',
+                                        fontSize: '14px',
+                                        color: 'var(--fg)',
+                                        textDecoration: 'none',
+                                        transition: 'background 0.15s',
+                                    }}
+                                >
+                                    <GridMenuIcon /> {t('home.panel')}
+                                </Link>
+                            </div>
+                        </>
+                    )}
                 </div>
                 <div style={{
                     fontSize: '11px',

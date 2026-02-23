@@ -253,23 +253,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                     <div className="fixed inset-0 z-40" onClick={() => setNavOpen(false)} />
                                     <div className="absolute top-full left-0 mt-2 w-56 bg-bg-card border border-border rounded-xl shadow-[var(--shadow-lg)] z-50 py-1.5 animate-fade-in">
                                         <Link
-                                            href="/admin"
-                                            onClick={() => setNavOpen(false)}
-                                            className={`flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors ${pathname.startsWith('/admin') ? 'text-accent font-medium bg-accent/10' : 'text-fg hover:bg-bg-secondary'}`}
-                                        >
-                                            <SettingsMenuIcon /> {t('home.admin')}
-                                        </Link>
-                                        <Link
                                             href="/panel"
                                             onClick={() => setNavOpen(false)}
-                                            className={`flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors ${pathname.startsWith('/panel') ? 'text-accent font-medium bg-accent/10' : 'text-fg hover:bg-bg-secondary'}`}
+                                            className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors text-fg hover:bg-bg-secondary"
                                         >
                                             <GridMenuIcon /> {t('home.panel')}
                                         </Link>
                                         <Link
                                             href="/webhook-test"
                                             onClick={() => setNavOpen(false)}
-                                            className={`flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors ${pathname.startsWith('/webhook-test') ? 'text-accent font-medium bg-accent/10' : 'text-fg hover:bg-bg-secondary'}`}
+                                            className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors text-fg hover:bg-bg-secondary"
                                         >
                                             <WebhookMenuIcon /> {t('home.webhookTest')}
                                         </Link>
