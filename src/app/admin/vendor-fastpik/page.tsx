@@ -11,7 +11,7 @@ interface TenantData {
     domain: string | null;
     logo_url: string | null;
     favicon_url: string | null;
-    primary_color: string;
+    primary_color: string | null;
     footer_text: string | null;
     is_active: boolean;
     created_at: string;
@@ -80,7 +80,7 @@ export default function VendorFastpikPage() {
     const [formDomain, setFormDomain] = useState('');
     const [formLogoUrl, setFormLogoUrl] = useState('');
     const [formFaviconUrl, setFormFaviconUrl] = useState('');
-    const [formColor, setFormColor] = useState('#7c3aed');
+
     const [formFooter, setFormFooter] = useState('');
     const [formLoading, setFormLoading] = useState(false);
     const [formResult, setFormResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -113,7 +113,7 @@ export default function VendorFastpikPage() {
         setFormDomain('');
         setFormLogoUrl('');
         setFormFaviconUrl('');
-        setFormColor('#7c3aed');
+
         setFormFooter('');
         setFormResult(null);
         setShowForm(true);
@@ -126,7 +126,7 @@ export default function VendorFastpikPage() {
         setFormDomain(tenant.domain || '');
         setFormLogoUrl(tenant.logo_url || '');
         setFormFaviconUrl(tenant.favicon_url || '');
-        setFormColor(tenant.primary_color || '#7c3aed');
+
         setFormFooter(tenant.footer_text || '');
         setFormResult(null);
         setShowForm(true);
@@ -138,8 +138,8 @@ export default function VendorFastpikPage() {
         setFormResult(null);
         try {
             const body = editingTenant
-                ? { id: editingTenant.id, slug: formSlug, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, primary_color: formColor, footer_text: formFooter || null }
-                : { slug: formSlug, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, primary_color: formColor, footer_text: formFooter || null };
+                ? { id: editingTenant.id, slug: formSlug, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, footer_text: formFooter || null }
+                : { slug: formSlug, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, footer_text: formFooter || null };
 
             const res = await fetch(`${FASTPIK_API}/api/admin/tenants`, {
                 method: editingTenant ? 'PUT' : 'POST',
@@ -272,7 +272,7 @@ export default function VendorFastpikPage() {
                                     {tenant.logo_url ? (
                                         <img src={tenant.logo_url} alt={tenant.name} className="w-10 h-10 rounded-lg object-cover border border-border" />
                                     ) : (
-                                        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: tenant.primary_color }}>
+                                        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm bg-gray-500 dark:bg-gray-600">
                                             {tenant.name.charAt(0).toUpperCase()}
                                         </div>
                                     )}
@@ -288,14 +288,12 @@ export default function VendorFastpikPage() {
 
                             {/* Tenant Info */}
                             <div className="space-y-2 text-xs text-fg-muted mb-4">
-                                <div className="flex items-center gap-2">
-                                    <GlobeIcon />
-                                    <span className="truncate">{tenant.domain || '—'}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 rounded-sm border border-border" style={{ backgroundColor: tenant.primary_color }} />
-                                    <span>{tenant.primary_color}</span>
-                                </div>
+                                {tenant.domain && (
+                                    <div className="flex items-center gap-2">
+                                        <GlobeIcon />
+                                        <span className="truncate">{tenant.domain}</span>
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-2">
                                     <span className="text-fg-muted">{t('vendor.since')}:</span>
                                     <span>{formatDate(tenant.created_at)}</span>
@@ -389,32 +387,14 @@ export default function VendorFastpikPage() {
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="text-xs font-medium text-fg mb-1 block">{t('vendor.formColor')}</label>
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="color"
-                                    value={formColor}
-                                    onChange={(e) => setFormColor(e.target.value)}
-                                    className="w-10 h-10 rounded-lg border border-border cursor-pointer p-0.5"
-                                />
-                                <input
-                                    value={formColor}
-                                    onChange={(e) => setFormColor(e.target.value)}
-                                    className="flex-1 px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/20"
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="text-xs font-medium text-fg mb-1 block">{t('vendor.formFooter')}</label>
-                            <input
-                                value={formFooter}
-                                onChange={(e) => setFormFooter(e.target.value)}
-                                placeholder="© 2026 Studio Name"
-                                className="w-full px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20"
-                            />
-                        </div>
+                    <div>
+                        <label className="text-xs font-medium text-fg mb-1 block">{t('vendor.formFooter')}</label>
+                        <input
+                            value={formFooter}
+                            onChange={(e) => setFormFooter(e.target.value)}
+                            placeholder="© 2026 Studio Name"
+                            className="w-full px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20"
+                        />
                     </div>
 
                     {/* Preview */}
@@ -424,7 +404,7 @@ export default function VendorFastpikPage() {
                             {formLogoUrl ? (
                                 <img src={formLogoUrl} alt="Preview" className="w-8 h-8 rounded-lg object-cover border border-border" />
                             ) : (
-                                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: formColor }}>
+                                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs bg-gray-500 dark:bg-gray-600">
                                     {formName ? formName.charAt(0).toUpperCase() : '?'}
                                 </div>
                             )}
