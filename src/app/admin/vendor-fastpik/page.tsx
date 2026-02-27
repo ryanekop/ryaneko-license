@@ -64,7 +64,7 @@ function Dialog({ open, onClose, children }: { open: boolean; onClose: () => voi
     );
 }
 
-const FASTPIK_API = process.env.NEXT_PUBLIC_FASTPIK_API_URL || 'https://fastpik.ryanekoapp.web.id';
+
 
 export default function VendorFastpikPage() {
     const { t } = useLang();
@@ -85,15 +85,13 @@ export default function VendorFastpikPage() {
     const [formLoading, setFormLoading] = useState(false);
     const [formResult, setFormResult] = useState<{ success: boolean; message: string } | null>(null);
 
-    const apiKey = typeof window !== 'undefined' ? localStorage.getItem('fastpik_admin_key') || '' : '';
+
 
     const fetchTenants = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
-            const res = await fetch(`${FASTPIK_API}/api/admin/tenants`, {
-                headers: { 'x-admin-api-key': apiKey },
-            });
+            const res = await fetch('/api/admin/vendor-fastpik');
             if (!res.ok) throw new Error(`Status ${res.status}`);
             const data = await res.json();
             setTenants(data);
@@ -102,7 +100,7 @@ export default function VendorFastpikPage() {
         } finally {
             setLoading(false);
         }
-    }, [apiKey]);
+    }, []);
 
     useEffect(() => { fetchTenants(); }, [fetchTenants]);
 
@@ -141,9 +139,9 @@ export default function VendorFastpikPage() {
                 ? { id: editingTenant.id, slug: formSlug, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, footer_text: formFooter || null }
                 : { slug: formSlug, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, footer_text: formFooter || null };
 
-            const res = await fetch(`${FASTPIK_API}/api/admin/tenants`, {
+            const res = await fetch('/api/admin/vendor-fastpik', {
                 method: editingTenant ? 'PUT' : 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-admin-api-key': apiKey },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
             const data = await res.json();
@@ -163,9 +161,9 @@ export default function VendorFastpikPage() {
 
     const handleToggleActive = async (tenant: TenantData) => {
         try {
-            await fetch(`${FASTPIK_API}/api/admin/tenants`, {
+            await fetch('/api/admin/vendor-fastpik', {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'x-admin-api-key': apiKey },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: tenant.id, is_active: !tenant.is_active }),
             });
             fetchTenants();
@@ -201,38 +199,7 @@ export default function VendorFastpikPage() {
                 </div>
             </div>
 
-            {/* API Key Setup */}
-            {!apiKey && (
-                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-sm">
-                    <p className="font-semibold text-amber-600 dark:text-amber-400 mb-2">⚠️ {t('vendor.apiKeyNeeded')}</p>
-                    <div className="flex gap-2">
-                        <input
-                            type="password"
-                            placeholder="ADMIN_API_KEY"
-                            className="flex-1 px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20"
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    const input = e.target as HTMLInputElement;
-                                    localStorage.setItem('fastpik_admin_key', input.value);
-                                    window.location.reload();
-                                }
-                            }}
-                        />
-                        <button
-                            onClick={() => {
-                                const input = document.querySelector<HTMLInputElement>('input[placeholder="ADMIN_API_KEY"]');
-                                if (input?.value) {
-                                    localStorage.setItem('fastpik_admin_key', input.value);
-                                    window.location.reload();
-                                }
-                            }}
-                            className="px-4 py-2 bg-accent text-accent-fg rounded-xl text-sm font-medium cursor-pointer hover:opacity-85 transition-all"
-                        >
-                            {t('fastpik.save')}
-                        </button>
-                    </div>
-                </div>
-            )}
+
 
             {/* Vendor Count */}
             <div className="flex items-center gap-2 text-fg-muted text-sm">
