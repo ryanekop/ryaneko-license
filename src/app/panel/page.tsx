@@ -63,6 +63,13 @@ const EXTERNAL_LINKS = [
         bg: 'bg-orange-600/5'
     },
     {
+        name: 'Tencent Cloud',
+        url: 'https://console.tencentcloud.com/developer',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=tencentcloud.com&sz=128',
+        color: 'text-blue-500',
+        bg: 'bg-blue-500/5'
+    },
+    {
         name: 'Domainesia.com',
         url: 'https://my.domainesia.com/',
         iconUrl: 'https://www.google.com/s2/favicons?domain=domainesia.com&sz=128',
@@ -84,7 +91,7 @@ const EXTERNAL_LINKS = [
         bg: 'bg-purple-600/5'
     },
     {
-        name: 'Cloudflare Workers',
+        name: 'Cloudflare',
         url: 'https://dash.cloudflare.com/',
         iconUrl: 'https://www.google.com/s2/favicons?domain=cloudflare.com&sz=128',
         color: 'text-amber-600',
@@ -110,6 +117,13 @@ const EXTERNAL_LINKS = [
         iconUrl: 'https://www.google.com/s2/favicons?domain=uptimerobot.com&sz=128',
         color: 'text-green-600',
         bg: 'bg-green-600/5'
+    },
+    {
+        name: 'Manychat',
+        url: 'https://app.manychat.com/',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=manychat.com&sz=128',
+        color: 'text-cyan-600',
+        bg: 'bg-cyan-600/5'
     }
 ];
 
