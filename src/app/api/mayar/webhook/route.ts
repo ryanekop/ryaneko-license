@@ -139,6 +139,14 @@ async function handleFastpikSubscription(
         isLifetime = true;
     } else {
         console.log(`[Fastpik Webhook] Unknown amount: ${amountNum}`);
+        await notifyAlert(
+            `<b>⚠️ Fastpik: Unknown Amount</b>\n\n` +
+            `📦 Product: ${(payload.data as any)?.productName || 'unknown'}\n` +
+            `👤 ${name}\n` +
+            `📧 ${email}\n` +
+            `💰 Rp ${amountNum.toLocaleString('id-ID')}\n` +
+            `🧾 Order: ${transactionId}`
+        );
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
     }
 
