@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
 
-// Direct connection to Client Desk Supabase
-const clientdeskSupabase = getClientDeskSupabase();
-
 // GET - list users
 export async function GET() {
     try {
+        const supabase = getClientDeskSupabase();
+
         // Get all auth users (paginated)
         let authUsers: any[] = [];
         let page = 1;
         while (true) {
-            const { data: authData, error: authError } = await clientdeskSupabase.auth.admin.listUsers({ page, perPage: 1000 });
+            const { data: authData, error: authError } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
             if (authError) throw authError;
             const users = authData?.users || [];
             authUsers = authUsers.concat(users);
@@ -20,15 +19,15 @@ export async function GET() {
         }
 
         // Get subscriptions and profiles
-        const { data: subscriptions } = await clientdeskSupabase.from('subscriptions').select('user_id, tier, status, end_date, trial_end_date');
-        const { data: profiles } = await clientdeskSupabase.from('profiles').select('id, full_name');
+        const { data: subscriptions } = await supabase.from('subscriptions').select('user_id, tier, status, end_date, trial_end_date');
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name');
 
-        const subMap = new Map(subscriptions?.map(s => [s.user_id, s]) || []);
-        const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+        const subMap = new Map((subscriptions || []).map((s: any) => [s.user_id, s]));
+        const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
 
         const formattedUsers = authUsers.map(user => {
-            const subscription = subMap.get(user.id);
-            const profile = profileMap.get(user.id);
+            const subscription = subMap.get(user.id) as any;
+            const profile = profileMap.get(user.id) as any;
             return {
                 id: user.id,
                 email: user.email || 'No Email',
@@ -54,6 +53,7 @@ export async function GET() {
 // POST - create trial user
 export async function POST(request: NextRequest) {
     try {
+        const supabase = getClientDeskSupabase();
         const { name, email, trialDays = 5 } = await request.json();
 
         if (!name || !email) {
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Invite user by email
-        const { data: authData, error: authError } = await clientdeskSupabase.auth.admin.inviteUserByEmail(email, {
+        const { data: authData, error: authError } = await supabase.auth.admin.inviteUserByEmail(email, {
             data: { full_name: name },
             redirectTo: 'https://clientdesk.ryanekoapp.web.id/auth/callback',
         });
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Create profile
-        await clientdeskSupabase.from('profiles').insert({
+        await supabase.from('profiles').insert({
             id: authData.user.id,
             full_name: name,
         });
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         const trialEndDate = new Date();
         trialEndDate.setDate(trialEndDate.getDate() + parseInt(trialDays));
 
-        await clientdeskSupabase.from('subscriptions').insert({
+        await supabase.from('subscriptions').insert({
             user_id: authData.user.id,
             tier: 'free',
             status: 'trial',
@@ -106,13 +106,14 @@ export async function POST(request: NextRequest) {
 // DELETE - delete user
 export async function DELETE(request: NextRequest) {
     try {
+        const supabase = getClientDeskSupabase();
         const { userId } = await request.json();
 
         if (!userId) {
             return NextResponse.json({ success: false, message: 'User ID is required' }, { status: 400 });
         }
 
-        const { error } = await clientdeskSupabase.auth.admin.deleteUser(userId);
+        const { error } = await supabase.auth.admin.deleteUser(userId);
         if (error) throw error;
 
         return NextResponse.json({ success: true, message: 'User deleted successfully' });
@@ -125,6 +126,7 @@ export async function DELETE(request: NextRequest) {
 // PATCH - edit user (set_expiry, change_tier)
 export async function PATCH(request: NextRequest) {
     try {
+        const supabase = getClientDeskSupabase();
         const { userId, action, tier, expiryDate } = await request.json();
 
         if (!userId) {
@@ -132,20 +134,21 @@ export async function PATCH(request: NextRequest) {
         }
 
         if (action === 'set_expiry') {
-            const { data: currentSub } = await clientdeskSupabase
+            const { data: currentSub } = await supabase
                 .from('subscriptions')
                 .select('tier, status')
                 .eq('user_id', userId)
                 .single();
 
             const updateData: Record<string, any> = {};
-            if (currentSub?.status === 'trial' || currentSub?.tier === 'free') {
+            const sub = currentSub as any;
+            if (sub?.status === 'trial' || sub?.tier === 'free') {
                 updateData.trial_end_date = expiryDate;
             } else {
                 updateData.end_date = expiryDate;
             }
 
-            const { error } = await clientdeskSupabase.from('subscriptions').update(updateData).eq('user_id', userId);
+            const { error } = await supabase.from('subscriptions').update(updateData).eq('user_id', userId);
             if (error) throw error;
 
             return NextResponse.json({ success: true, message: 'Expiry date updated' });
@@ -163,7 +166,7 @@ export async function PATCH(request: NextRequest) {
                 else if (tier === 'pro_yearly') { expiry.setFullYear(expiry.getFullYear() + 1); endDate = expiry.toISOString(); }
             }
 
-            const { error } = await clientdeskSupabase.from('subscriptions').upsert({
+            const { error } = await supabase.from('subscriptions').upsert({
                 user_id: userId,
                 tier,
                 status: isTrial ? 'trial' : 'active',
