@@ -4,7 +4,8 @@ export type ProductSlug =
     | 'raw-file-copy-tool'
     | 'realtime-upload-pro'
     | 'photo-split-express'
-    | 'fastpik';
+    | 'fastpik'
+    | 'clientdesk';
 
 export type LicenseStatus = 'available' | 'used' | 'revoked';
 

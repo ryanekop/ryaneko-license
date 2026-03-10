@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getFastpikSupabase } from '@/lib/fastpik-supabase';
+import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
 import { notifyPurchase, notifyAlert } from '@/lib/telegram';
 import { sendEmail } from '@/lib/resend';
 import { getEmailHtml, getEmailSubject } from '@/lib/email-templates';
@@ -62,6 +63,13 @@ function isFastpikProduct(productName: string): boolean {
     const lowerName = productName.toLowerCase();
     const fastpikKeywords = ['fastpik', 'fast pik', 'fast-pik'];
     return fastpikKeywords.some(keyword => lowerName.includes(keyword));
+}
+
+// Check if product name matches Client Desk
+function isClientDeskProduct(productName: string): boolean {
+    const lowerName = productName.toLowerCase();
+    const clientDeskKeywords = ['client desk', 'clientdesk', 'client-desk'];
+    return clientDeskKeywords.some(keyword => lowerName.includes(keyword));
 }
 
 // =============================================
@@ -231,6 +239,181 @@ async function handleFastpikSubscription(
 
     console.log(`[Fastpik Webhook] ✅ Subscription activated: ${email} -> ${planTier}`);
     return jsonResponse('Success', `Fastpik subscription activated: ${planTier}`);
+}
+
+// =============================================
+// CLIENT DESK SUBSCRIPTION HANDLER
+// =============================================
+
+async function handleClientDeskSubscription(
+    orderData: MayarOrderData,
+    payload: MayarWebhookPayload
+): Promise<NextResponse> {
+    const clientdeskSupabase = getClientDeskSupabase();
+    const CLIENTDESK_SITE_URL = process.env.CLIENTDESK_SITE_URL || 'https://clientdesk.ryanekoapp.web.id';
+
+    const data = payload.data || payload;
+    const rawStatus = (data as any).status || (payload as any).status;
+
+    // Extract customer info
+    const customer = (data as any).customer || (data as any).customerDetail || (payload as any).customer || {};
+    const email =
+        orderData.customerEmail ||
+        orderData.customer_email ||
+        (data as any).customerEmail ||
+        (payload as any).customerEmail ||
+        customer.email ||
+        (data as any).email ||
+        (payload as any).email;
+
+    const name =
+        orderData.customerName ||
+        orderData.customer_name ||
+        (data as any).customerName ||
+        (payload as any).customerName ||
+        customer.name ||
+        customer.fullName ||
+        (data as any).name ||
+        (payload as any).name ||
+        'User';
+
+    const amount = (data as any).amount || (data as any).totalAmount || (data as any).gross_amount || (payload as any).amount || 0;
+    const transactionId = orderData.id || (data as any).transactionId || (payload as any).id || `TRX-${Date.now()}`;
+
+    console.log(`[Client Desk Webhook] Email: ${email}, Name: ${name}, Status: ${rawStatus}, Amount: ${amount}`);
+
+    if (!email) {
+        console.error('[Client Desk Webhook] No email found in payload');
+        return jsonResponse('Error', 'No email provided', 400);
+    }
+
+    // Check payment status
+    const statusStr = rawStatus?.toString().toLowerCase();
+    const isSuccess = rawStatus === true ||
+        ['success', 'settlement', 'paid', 'successful'].includes(statusStr);
+
+    if (!isSuccess) {
+        return jsonResponse('Success', `Ignored status: ${rawStatus}`);
+    }
+
+    // Determine plan from amount
+    // Monthly: 39rb, Quarterly: 99rb, Yearly: 349rb, Lifetime: 549rb
+    let planDurationDays = 0;
+    let planTier = 'free';
+    let isLifetime = false;
+    const amountNum = Number(amount);
+
+    if (amountNum >= 38000 && amountNum <= 40000) {
+        planTier = 'pro_monthly';
+        planDurationDays = 30;
+    } else if (amountNum >= 98000 && amountNum <= 100000) {
+        planTier = 'pro_quarterly';
+        planDurationDays = 90;
+    } else if (amountNum >= 348000 && amountNum <= 350000) {
+        planTier = 'pro_yearly';
+        planDurationDays = 365;
+    } else if (amountNum >= 548000 && amountNum <= 550000) {
+        planTier = 'lifetime';
+        isLifetime = true;
+    } else {
+        console.log(`[Client Desk Webhook] Unknown amount: ${amountNum}`);
+        await notifyAlert(
+            `<b>⚠️ Client Desk: Unknown Amount</b>\n\n` +
+            `📦 Product: ${(payload.data as any)?.productName || 'unknown'}\n` +
+            `👤 ${name}\n` +
+            `📧 ${email}\n` +
+            `💰 Rp ${amountNum.toLocaleString('id-ID')}\n` +
+            `🧾 Order: ${transactionId}`
+        );
+        return jsonResponse('Success', `Unknown amount: ${amountNum}`);
+    }
+
+    // Find or Create User in Client Desk Supabase
+    let userId: string | undefined;
+    const { data: newUser, error: createError } = await clientdeskSupabase.auth.admin.createUser({
+        email: email,
+        email_confirm: true,
+        user_metadata: { full_name: name }
+    });
+
+    if (createError) {
+        // User already exists — find them
+        const { data: { users: allUsers } } = await clientdeskSupabase.auth.admin.listUsers({ perPage: 1000 });
+        const found = allUsers?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        if (found) {
+            userId = found.id;
+            // Send magic link for existing user
+            try {
+                await clientdeskSupabase.auth.signInWithOtp({
+                    email: email,
+                    options: {
+                        emailRedirectTo: `${CLIENTDESK_SITE_URL}/id/auth/callback?next=/id/dashboard`
+                    }
+                });
+            } catch (e) {
+                console.error('[Client Desk Webhook] Failed to send OTP:', e);
+            }
+        }
+    } else {
+        userId = newUser.user.id;
+        // Create profile for new user
+        await clientdeskSupabase.from('profiles').insert({
+            id: userId,
+            full_name: name,
+        });
+        // Send password reset for new user
+        try {
+            await clientdeskSupabase.auth.resetPasswordForEmail(email, {
+                redirectTo: `${CLIENTDESK_SITE_URL}/id/auth/callback?type=recovery`
+            });
+        } catch (e) {
+            console.error('[Client Desk Webhook] Failed to send password reset:', e);
+        }
+    }
+
+    if (!userId) {
+        return jsonResponse('Error', 'User ID error', 500);
+    }
+
+    // Calculate dates
+    const startDate = new Date();
+    let endDate = null;
+    if (!isLifetime) {
+        const end = new Date(startDate);
+        end.setDate(end.getDate() + planDurationDays);
+        endDate = end.toISOString();
+    }
+
+    // Upsert subscription
+    const { error: upsertError } = await clientdeskSupabase
+        .from('subscriptions')
+        .upsert({
+            user_id: userId,
+            tier: planTier,
+            status: 'active',
+            start_date: startDate.toISOString(),
+            end_date: endDate,
+            mayar_transaction_id: transactionId,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+    if (upsertError) {
+        console.error('[Client Desk Webhook] Subscription upsert error:', upsertError);
+        throw upsertError;
+    }
+
+    // Telegram notification
+    await notifyPurchase(
+        `<b>Client Desk Purchase!</b>\n\n` +
+        `📦 ${planTier}\n` +
+        `👤 ${name}\n` +
+        `📧 ${email}\n` +
+        `💰 Rp ${amountNum.toLocaleString('id-ID')}\n` +
+        `🔑 Transaction: ${transactionId}`
+    );
+
+    console.log(`[Client Desk Webhook] ✅ Subscription activated: ${email} -> ${planTier}`);
+    return jsonResponse('Success', `Client Desk subscription activated: ${planTier}`);
 }
 
 // =============================================
@@ -556,14 +739,20 @@ export async function POST(request: NextRequest) {
             return await handleFastpikSubscription(orderData, payload);
         }
 
-        // 2. Check if this is a software license purchase
+        // 2. Check if this is a Client Desk subscription purchase
+        if (isClientDeskProduct(productName)) {
+            console.log(`[Mayar Webhook] ➡️ Routing to Client Desk handler for: ${productName}`);
+            return await handleClientDeskSubscription(orderData, payload);
+        }
+
+        // 3. Check if this is a software license purchase
         const product = await detectProduct(productName);
         if (product) {
             console.log(`[Mayar Webhook] ➡️ Routing to License handler for: ${productName}`);
             return await handleLicensePurchase(orderData, payload, product);
         }
 
-        // 3. Unknown product — log and return success to not block webhook
+        // 4. Unknown product — log and return success to not block webhook
         console.log(`[Mayar Webhook] ❓ Unknown product: ${productName}`);
         await notifyAlert(
             `<b>⚠️ Unknown Product in Webhook</b>\n\n` +
@@ -586,6 +775,6 @@ export async function GET() {
         status: 'OK',
         message: 'Unified Mayar Webhook — Ryaneko License + Fastpik',
         version: '2.0',
-        supportedProducts: ['raw-file-copy-tool', 'realtime-upload-pro', 'photo-split-express', 'fastpik'],
+        supportedProducts: ['raw-file-copy-tool', 'realtime-upload-pro', 'photo-split-express', 'fastpik', 'clientdesk'],
     });
 }
