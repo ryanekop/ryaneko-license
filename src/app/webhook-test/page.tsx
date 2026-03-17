@@ -110,6 +110,76 @@ const PRESETS = [
         },
     },
     {
+        label: 'Bundle Client Desk + Fastpik (1 Bulan)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-BND-${Date.now()}`,
+                productName: 'Bundling Client Desk & Fastpik',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 49000,
+            },
+        },
+    },
+    {
+        label: 'Bundle Client Desk + Fastpik (3 Bulan)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-BND-${Date.now()}`,
+                productName: 'Bundling Client Desk & Fastpik',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 125000,
+            },
+        },
+    },
+    {
+        label: 'Bundle Client Desk + Fastpik (12 Bulan)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-BND-${Date.now()}`,
+                productName: 'Bundling Client Desk & Fastpik',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 399000,
+            },
+        },
+    },
+    {
+        label: 'Bundle Client Desk + Fastpik (Lifetime)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-BND-${Date.now()}`,
+                productName: 'Bundling Client Desk & Fastpik',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 749000,
+            },
+        },
+    },
+    {
+        label: 'Bundle Client Desk + Fastpik (Unknown Amount)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-BND-${Date.now()}`,
+                productName: 'Bundling Client Desk & Fastpik',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 61000,
+            },
+        },
+    },
+    {
         label: 'Realtime Upload Pro',
         payload: {
             event: 'payment.received',
