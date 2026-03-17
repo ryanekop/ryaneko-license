@@ -81,128 +81,8 @@ const CLIENT_DESK_PLAN_PRICES: Record<ClientDeskPlanTier, number> = {
     lifetime: 549000,
 };
 
-const CLIENT_DESK_PLAN_KEYWORDS: Array<{ tier: ClientDeskPlanTier; keywords: string[] }> = [
-    {
-        tier: 'lifetime',
-        keywords: ['lifetime', 'seumur hidup', 'selamanya', 'forever', 'permanent'],
-    },
-    {
-        tier: 'pro_yearly',
-        keywords: ['yearly', 'annual', 'annually', 'tahunan', '1 tahun', '12 bulan', 'per tahun', 'per year'],
-    },
-    {
-        tier: 'pro_quarterly',
-        keywords: ['quarterly', 'kuartal', 'triwulan', '3 bulan', '3 month', '3 months', 'per quarter', 'per 3 bulan'],
-    },
-    {
-        tier: 'pro_monthly',
-        keywords: ['monthly', 'bulanan', '1 bulan', '1 month', 'per bulan', 'per month'],
-    },
-];
-
 const CLIENT_DESK_MIN_PRICE_RATIO = 0.5;
 const CLIENT_DESK_AMOUNT_TOLERANCE = 1000;
-
-interface ClientDeskPlanDetectionResult {
-    tier: ClientDeskPlanTier | null;
-    keyword: string | null;
-    source: string | null;
-    searchableTexts: string[];
-}
-
-function normalizePlanText(value: unknown): string {
-    if (typeof value !== 'string') return '';
-    return value.toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-function addTextCandidate(target: string[], value: unknown) {
-    const normalized = normalizePlanText(value);
-    if (!normalized) return;
-    if (!target.includes(normalized)) {
-        target.push(normalized);
-    }
-}
-
-function collectAddonTexts(addons: unknown): string[] {
-    if (!Array.isArray(addons)) return [];
-    const texts: string[] = [];
-    for (const item of addons) {
-        if (typeof item === 'string') {
-            addTextCandidate(texts, item);
-            continue;
-        }
-        if (!item || typeof item !== 'object') continue;
-        const addon = item as { productName?: string; product_name?: string; name?: string };
-        addTextCandidate(texts, addon.productName);
-        addTextCandidate(texts, addon.product_name);
-        addTextCandidate(texts, addon.name);
-    }
-    return texts;
-}
-
-function collectCustomFieldTexts(customFields: unknown): string[] {
-    if (!Array.isArray(customFields)) return [];
-    const texts: string[] = [];
-    for (const rawField of customFields) {
-        if (!rawField || typeof rawField !== 'object') continue;
-        const field = rawField as MayarCustomField;
-        addTextCandidate(texts, field.name);
-
-        if (typeof field.value === 'string') {
-            addTextCandidate(texts, field.value);
-        } else if (Array.isArray(field.value)) {
-            const selectedOptions = field.value.filter((opt) => opt?.selected);
-            const optionsToUse = selectedOptions.length > 0 ? selectedOptions : field.value;
-            for (const opt of optionsToUse) {
-                addTextCandidate(texts, opt?.name);
-                addTextCandidate(texts, opt?.value);
-            }
-        }
-
-        addTextCandidate(texts, field.selectedValue?.name);
-        addTextCandidate(texts, field.selectedValue?.value);
-    }
-    return texts;
-}
-
-function extractClientDeskPlanFromName(
-    orderData: MayarOrderData,
-    payload: MayarWebhookPayload
-): ClientDeskPlanDetectionResult {
-    const texts: string[] = [];
-    addTextCandidate(texts, orderData.productName);
-    addTextCandidate(texts, orderData.product_name);
-    addTextCandidate(texts, payload.productName);
-    addTextCandidate(texts, payload.product_name);
-
-    const addonTexts = collectAddonTexts(orderData.addOn || orderData.addons || orderData.items);
-    addonTexts.forEach((text) => addTextCandidate(texts, text));
-
-    const customFieldTexts = collectCustomFieldTexts(orderData.custom_field || payload.data?.custom_field);
-    customFieldTexts.forEach((text) => addTextCandidate(texts, text));
-
-    for (const sourceText of texts) {
-        for (const rule of CLIENT_DESK_PLAN_KEYWORDS) {
-            for (const keyword of rule.keywords) {
-                if (sourceText.includes(keyword)) {
-                    return {
-                        tier: rule.tier,
-                        keyword,
-                        source: sourceText,
-                        searchableTexts: texts,
-                    };
-                }
-            }
-        }
-    }
-
-    return {
-        tier: null,
-        keyword: null,
-        source: null,
-        searchableTexts: texts,
-    };
-}
 
 function validateClientDeskAmountForTier(tier: ClientDeskPlanTier, amount: number) {
     const basePrice = CLIENT_DESK_PLAN_PRICES[tier];
@@ -219,12 +99,77 @@ function validateClientDeskAmountForTier(tier: ClientDeskPlanTier, amount: numbe
 }
 
 function parseAmountNumber(value: unknown): number {
-    if (typeof value === 'number') return value;
-    if (typeof value === 'string') {
-        const sanitized = value.replace(/[^0-9.,-]/g, '').replace(/,/g, '');
-        return Number(sanitized);
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? Math.round(value) : NaN;
     }
-    return Number(value);
+
+    if (typeof value === 'string') {
+        const sanitized = value.trim().replace(/[^0-9.,-]/g, '');
+        if (!sanitized) return NaN;
+
+        const isNegative = sanitized.startsWith('-');
+        const unsigned = sanitized.replace(/-/g, '');
+        if (!unsigned) return NaN;
+
+        const commaCount = (unsigned.match(/,/g) || []).length;
+        const dotCount = (unsigned.match(/\./g) || []).length;
+        const isThousandsGrouped = (separator: ',' | '.') => {
+            const escaped = separator === '.' ? '\\.' : ',';
+            return new RegExp(`^\\d{1,3}(${escaped}\\d{3})+$`).test(unsigned);
+        };
+
+        let normalized = unsigned;
+
+        if (commaCount > 0 && dotCount > 0) {
+            const lastComma = unsigned.lastIndexOf(',');
+            const lastDot = unsigned.lastIndexOf('.');
+            const decimalSeparator = lastComma > lastDot ? ',' : '.';
+            const thousandsSeparator = decimalSeparator === ',' ? '.' : ',';
+
+            normalized = unsigned.split(thousandsSeparator).join('');
+            if (decimalSeparator === ',') {
+                normalized = normalized.replace(',', '.');
+            } else {
+                normalized = normalized.replace(/,/g, '');
+            }
+        } else if (commaCount > 0) {
+            normalized = isThousandsGrouped(',') ? unsigned.replace(/,/g, '') : unsigned.replace(/,/g, '.');
+        } else if (dotCount > 0) {
+            normalized = isThousandsGrouped('.') ? unsigned.replace(/\./g, '') : unsigned;
+        }
+
+        const parsed = Number(normalized);
+        if (!Number.isFinite(parsed)) return NaN;
+
+        const signed = isNegative ? -parsed : parsed;
+        return Math.round(signed);
+    }
+
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.round(parsed) : NaN;
+}
+
+function detectClientDeskPlanFromAmount(amount: number): ClientDeskPlanTier | null {
+    if (!Number.isFinite(amount)) return null;
+
+    const tiers: ClientDeskPlanTier[] = ['pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
+    const validCandidates = tiers
+        .map((tier) => {
+            const validation = validateClientDeskAmountForTier(tier, amount);
+            return {
+                tier,
+                validation,
+                distance: Math.abs(amount - validation.basePrice),
+            };
+        })
+        .filter((candidate) => candidate.validation.isValid);
+
+    if (validCandidates.length === 0) {
+        return null;
+    }
+
+    validCandidates.sort((a, b) => a.distance - b.distance);
+    return validCandidates[0].tier;
 }
 
 function getClientDeskPlanDurationDays(tier: ClientDeskPlanTier): number {
@@ -458,38 +403,36 @@ async function handleClientDeskSubscription(
         return jsonResponse('Success', `Ignored status: ${rawStatus}`);
     }
 
-    // Determine plan from name first, then validate amount for that same plan
+    // Determine plan from amount only (same approach as Fastpik) with Client Desk discount/tolerance rules
     const amountNum = parseAmountNumber(amount);
-    const planDetection = extractClientDeskPlanFromName(orderData, payload);
     const productName = orderData.productName || orderData.product_name || payload.data?.productName || payload.data?.product_name || 'unknown';
+    const planTier = detectClientDeskPlanFromAmount(amountNum);
 
-    if (!planDetection.tier) {
-        console.log(`[Client Desk Webhook] Plan keyword not detected. Amount: ${amountNum}`);
-        const sourcePreview = planDetection.searchableTexts.slice(0, 3).join(' | ') || '-';
+    if (!planTier) {
+        console.log(`[Client Desk Webhook] Plan not detected from amount: ${amountNum}`);
         await notifyAlert(
             `<b>⚠️ Client Desk: Unknown Amount</b>\n\n` +
             `📦 Product: ${productName}\n` +
             `👤 ${name}\n` +
             `📧 ${email}\n` +
             `💰 Rp ${Number.isFinite(amountNum) ? amountNum.toLocaleString('id-ID') : String(amount)}\n` +
-            `🔎 Plan from name: not detected\n` +
-            `📝 Source: ${sourcePreview}\n` +
+            `🔎 Detection: amount-only\n` +
+            `📝 Rule: min 50% of base price, max base + tolerance\n` +
             `🧾 Order: ${transactionId}`
         );
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
     }
 
-    const priceValidation = validateClientDeskAmountForTier(planDetection.tier, amountNum);
+    const priceValidation = validateClientDeskAmountForTier(planTier, amountNum);
     if (!priceValidation.isValid) {
-        console.log(`[Client Desk Webhook] Amount outside allowed range for ${planDetection.tier}: ${amountNum}`);
+        console.log(`[Client Desk Webhook] Amount outside allowed range for ${planTier}: ${amountNum}`);
         await notifyAlert(
             `<b>⚠️ Client Desk: Unknown Amount</b>\n\n` +
             `📦 Product: ${productName}\n` +
             `👤 ${name}\n` +
             `📧 ${email}\n` +
             `💰 Amount: Rp ${Number.isFinite(amountNum) ? amountNum.toLocaleString('id-ID') : String(amount)}\n` +
-            `🔎 Plan from name: ${planDetection.tier}\n` +
-            `🔤 Keyword: ${planDetection.keyword || '-'}\n` +
+            `🔎 Plan from amount: ${planTier}\n` +
             `💵 Base: Rp ${priceValidation.basePrice.toLocaleString('id-ID')}\n` +
             `📉 Min (50%): Rp ${priceValidation.minAllowed.toLocaleString('id-ID')}\n` +
             `📈 Max: Rp ${priceValidation.maxAllowed.toLocaleString('id-ID')}\n` +
@@ -498,7 +441,6 @@ async function handleClientDeskSubscription(
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
     }
 
-    const planTier = planDetection.tier;
     const isLifetime = planTier === 'lifetime';
     const planDurationDays = isLifetime ? 0 : getClientDeskPlanDurationDays(planTier);
 
