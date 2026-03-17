@@ -114,6 +114,7 @@ const TAB_ICONS: Record<string, React.ReactNode> = {
     'fastpik': <CameraIcon />,
     'clientdesk': <ClipboardIcon />,
     'vendor-fastpik': <VendorStoreIcon />,
+    'vendor-clientdesk': <VendorStoreIcon />,
     'generate': <GenerateIcon />,
 };
 
@@ -133,8 +134,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         { name: t('tab.realtimeUpload'), href: '/admin/realtime-upload', slug: 'realtime-upload-pro' },
         { name: t('tab.photoSplit'), href: '/admin/photo-split', slug: 'photo-split-express' },
         { name: t('tab.fastpik'), href: '/admin/fastpik', slug: 'fastpik' },
-        { name: t('tab.clientDesk'), href: '/admin/clientdesk', slug: 'clientdesk' },
         { name: t('tab.vendorFastpik'), href: '/admin/vendor-fastpik', slug: 'vendor-fastpik' },
+        { name: t('tab.clientDesk'), href: '/admin/clientdesk', slug: 'clientdesk' },
+        { name: t('tab.vendorClientDesk'), href: '/admin/vendor-clientdesk', slug: 'vendor-clientdesk' },
         { name: t('tab.generate'), href: '/admin/generate', slug: 'generate' },
     ];
 
