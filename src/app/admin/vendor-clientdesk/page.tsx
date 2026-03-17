@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useLang } from '@/lib/providers';
+import { resolveTenantAssetUrl } from '@/lib/tenant-asset-url';
+import { createVendorSlug } from '@/lib/vendor-slug';
 
 interface TenantData {
     id: string;
@@ -135,9 +137,15 @@ export default function VendorClientDeskPage() {
         setFormLoading(true);
         setFormResult(null);
         try {
+            const slugForPayload = editingTenant ? formSlug : createVendorSlug(formName);
+            if (!slugForPayload) {
+                setFormResult({ success: false, message: 'Slug is required' });
+                return;
+            }
+
             const body = editingTenant
-                ? { id: editingTenant.id, slug: formSlug, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, footer_text: formFooter || null }
-                : { slug: formSlug, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, footer_text: formFooter || null };
+                ? { id: editingTenant.id, slug: slugForPayload, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, footer_text: formFooter || null }
+                : { slug: slugForPayload, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, footer_text: formFooter || null };
 
             const res = await fetch('/api/admin/vendor-clientdesk', {
                 method: editingTenant ? 'PUT' : 'POST',
@@ -171,6 +179,11 @@ export default function VendorClientDeskPage() {
             alert('Connection error');
         }
     };
+
+    const previewLogoUrl = resolveTenantAssetUrl(
+        formLogoUrl,
+        formDomain || editingTenant?.domain || null
+    );
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -227,17 +240,19 @@ export default function VendorClientDeskPage() {
                 </div>
             ) : tenants.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {tenants.map((tenant, i) => (
-                        <div
-                            key={tenant.id}
-                            className={`bg-bg-card rounded-xl border ${tenant.is_active ? 'border-border' : 'border-danger/30 opacity-60'} p-5 shadow-[var(--shadow)] animate-fade-in hover:shadow-[var(--shadow-lg)] transition-all`}
-                            style={{ animationDelay: `${i * 0.05}s` }}
-                        >
+                    {tenants.map((tenant, i) => {
+                        const tenantLogoUrl = resolveTenantAssetUrl(tenant.logo_url, tenant.domain);
+                        return (
+                            <div
+                                key={tenant.id}
+                                className={`bg-bg-card rounded-xl border ${tenant.is_active ? 'border-border' : 'border-danger/30 opacity-60'} p-5 shadow-[var(--shadow)] animate-fade-in hover:shadow-[var(--shadow-lg)] transition-all`}
+                                style={{ animationDelay: `${i * 0.05}s` }}
+                            >
                             {/* Tenant Header */}
                             <div className="flex items-start justify-between mb-4">
                                 <div className="flex items-center gap-3">
-                                    {tenant.logo_url ? (
-                                        <img src={tenant.logo_url} alt={tenant.name} className="w-10 h-10 rounded-lg object-cover border border-border" />
+                                    {tenantLogoUrl ? (
+                                        <img src={tenantLogoUrl} alt={tenant.name} className="w-10 h-10 rounded-lg object-cover border border-border" />
                                     ) : (
                                         <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm bg-gray-500 dark:bg-gray-600">
                                             {tenant.name.charAt(0).toUpperCase()}
@@ -285,8 +300,9 @@ export default function VendorClientDeskPage() {
                                     {tenant.is_active ? t('vendor.deactivate') : t('vendor.activate')}
                                 </button>
                             </div>
-                        </div>
-                    ))}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 
@@ -305,18 +321,23 @@ export default function VendorClientDeskPage() {
                             <label className="text-xs font-medium text-fg mb-1 block">Slug</label>
                             <input
                                 value={formSlug}
-                                onChange={(e) => setFormSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                                placeholder="vendor-name"
+                                readOnly
+                                placeholder="auto-generated"
                                 required
-                                disabled={!!editingTenant}
-                                className="w-full px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-50"
+                                className="w-full px-3 py-2 bg-bg-secondary border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none"
                             />
                         </div>
                         <div>
                             <label className="text-xs font-medium text-fg mb-1 block">{t('vendor.formName')}</label>
                             <input
                                 value={formName}
-                                onChange={(e) => setFormName(e.target.value)}
+                                onChange={(e) => {
+                                    const nextName = e.target.value;
+                                    setFormName(nextName);
+                                    if (!editingTenant) {
+                                        setFormSlug(createVendorSlug(nextName));
+                                    }
+                                }}
                                 placeholder="Ayu Studio Gallery"
                                 required
                                 className="w-full px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20"
@@ -368,8 +389,8 @@ export default function VendorClientDeskPage() {
                     <div className="bg-bg rounded-xl border border-border p-4 mt-2">
                         <p className="text-xs text-fg-muted mb-2">{t('vendor.preview')}</p>
                         <div className="flex items-center gap-3">
-                            {formLogoUrl ? (
-                                <img src={formLogoUrl} alt="Preview" className="w-8 h-8 rounded-lg object-cover border border-border" />
+                            {previewLogoUrl ? (
+                                <img src={previewLogoUrl} alt="Preview" className="w-8 h-8 rounded-lg object-cover border border-border" />
                             ) : (
                                 <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs bg-gray-500 dark:bg-gray-600">
                                     {formName ? formName.charAt(0).toUpperCase() : '?'}
