@@ -62,6 +62,54 @@ const PRESETS = [
         },
     },
     {
+        label: 'Client Desk Pro Quarterly',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-CD-${Date.now()}`,
+                productName: 'Client Desk Pro Quarterly',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 99000,
+            },
+        },
+    },
+    {
+        label: 'Client Desk Lifetime (Voucher)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-CD-${Date.now()}`,
+                productName: 'Client Desk Pro Access',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 439200,
+                custom_field: [
+                    {
+                        name: 'Paket',
+                        value: 'Lifetime',
+                    },
+                ],
+            },
+        },
+    },
+    {
+        label: 'Client Desk Yearly (Below 50%)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-CD-${Date.now()}`,
+                productName: 'Client Desk Pro Yearly',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 150000,
+            },
+        },
+    },
+    {
         label: 'Realtime Upload Pro',
         payload: {
             event: 'payment.received',

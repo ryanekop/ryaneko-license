@@ -96,6 +96,7 @@ export interface MayarWebhookPayload {
     addOn?: MayarAddon[];
     addons?: MayarAddon[];
     items?: MayarAddon[];
+    custom_field?: MayarCustomField[];
 }
 
 export interface MayarCustomField {

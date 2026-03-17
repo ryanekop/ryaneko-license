@@ -72,6 +72,168 @@ function isClientDeskProduct(productName: string): boolean {
     return clientDeskKeywords.some(keyword => lowerName.includes(keyword));
 }
 
+type ClientDeskPlanTier = 'pro_monthly' | 'pro_quarterly' | 'pro_yearly' | 'lifetime';
+
+const CLIENT_DESK_PLAN_PRICES: Record<ClientDeskPlanTier, number> = {
+    pro_monthly: 39000,
+    pro_quarterly: 99000,
+    pro_yearly: 349000,
+    lifetime: 549000,
+};
+
+const CLIENT_DESK_PLAN_KEYWORDS: Array<{ tier: ClientDeskPlanTier; keywords: string[] }> = [
+    {
+        tier: 'lifetime',
+        keywords: ['lifetime', 'seumur hidup', 'selamanya', 'forever', 'permanent'],
+    },
+    {
+        tier: 'pro_yearly',
+        keywords: ['yearly', 'annual', 'annually', 'tahunan', '1 tahun', '12 bulan', 'per tahun', 'per year'],
+    },
+    {
+        tier: 'pro_quarterly',
+        keywords: ['quarterly', 'kuartal', 'triwulan', '3 bulan', '3 month', '3 months', 'per quarter', 'per 3 bulan'],
+    },
+    {
+        tier: 'pro_monthly',
+        keywords: ['monthly', 'bulanan', '1 bulan', '1 month', 'per bulan', 'per month'],
+    },
+];
+
+const CLIENT_DESK_MIN_PRICE_RATIO = 0.5;
+const CLIENT_DESK_AMOUNT_TOLERANCE = 1000;
+
+interface ClientDeskPlanDetectionResult {
+    tier: ClientDeskPlanTier | null;
+    keyword: string | null;
+    source: string | null;
+    searchableTexts: string[];
+}
+
+function normalizePlanText(value: unknown): string {
+    if (typeof value !== 'string') return '';
+    return value.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function addTextCandidate(target: string[], value: unknown) {
+    const normalized = normalizePlanText(value);
+    if (!normalized) return;
+    if (!target.includes(normalized)) {
+        target.push(normalized);
+    }
+}
+
+function collectAddonTexts(addons: unknown): string[] {
+    if (!Array.isArray(addons)) return [];
+    const texts: string[] = [];
+    for (const item of addons) {
+        if (typeof item === 'string') {
+            addTextCandidate(texts, item);
+            continue;
+        }
+        if (!item || typeof item !== 'object') continue;
+        const addon = item as { productName?: string; product_name?: string; name?: string };
+        addTextCandidate(texts, addon.productName);
+        addTextCandidate(texts, addon.product_name);
+        addTextCandidate(texts, addon.name);
+    }
+    return texts;
+}
+
+function collectCustomFieldTexts(customFields: unknown): string[] {
+    if (!Array.isArray(customFields)) return [];
+    const texts: string[] = [];
+    for (const rawField of customFields) {
+        if (!rawField || typeof rawField !== 'object') continue;
+        const field = rawField as MayarCustomField;
+        addTextCandidate(texts, field.name);
+
+        if (typeof field.value === 'string') {
+            addTextCandidate(texts, field.value);
+        } else if (Array.isArray(field.value)) {
+            const selectedOptions = field.value.filter((opt) => opt?.selected);
+            const optionsToUse = selectedOptions.length > 0 ? selectedOptions : field.value;
+            for (const opt of optionsToUse) {
+                addTextCandidate(texts, opt?.name);
+                addTextCandidate(texts, opt?.value);
+            }
+        }
+
+        addTextCandidate(texts, field.selectedValue?.name);
+        addTextCandidate(texts, field.selectedValue?.value);
+    }
+    return texts;
+}
+
+function extractClientDeskPlanFromName(
+    orderData: MayarOrderData,
+    payload: MayarWebhookPayload
+): ClientDeskPlanDetectionResult {
+    const texts: string[] = [];
+    addTextCandidate(texts, orderData.productName);
+    addTextCandidate(texts, orderData.product_name);
+    addTextCandidate(texts, payload.productName);
+    addTextCandidate(texts, payload.product_name);
+
+    const addonTexts = collectAddonTexts(orderData.addOn || orderData.addons || orderData.items);
+    addonTexts.forEach((text) => addTextCandidate(texts, text));
+
+    const customFieldTexts = collectCustomFieldTexts(orderData.custom_field || payload.data?.custom_field);
+    customFieldTexts.forEach((text) => addTextCandidate(texts, text));
+
+    for (const sourceText of texts) {
+        for (const rule of CLIENT_DESK_PLAN_KEYWORDS) {
+            for (const keyword of rule.keywords) {
+                if (sourceText.includes(keyword)) {
+                    return {
+                        tier: rule.tier,
+                        keyword,
+                        source: sourceText,
+                        searchableTexts: texts,
+                    };
+                }
+            }
+        }
+    }
+
+    return {
+        tier: null,
+        keyword: null,
+        source: null,
+        searchableTexts: texts,
+    };
+}
+
+function validateClientDeskAmountForTier(tier: ClientDeskPlanTier, amount: number) {
+    const basePrice = CLIENT_DESK_PLAN_PRICES[tier];
+    const minAllowed = Math.floor(basePrice * CLIENT_DESK_MIN_PRICE_RATIO);
+    const maxAllowed = basePrice + CLIENT_DESK_AMOUNT_TOLERANCE;
+    const isValid = Number.isFinite(amount) && amount >= minAllowed && amount <= maxAllowed;
+
+    return {
+        isValid,
+        basePrice,
+        minAllowed,
+        maxAllowed,
+    };
+}
+
+function parseAmountNumber(value: unknown): number {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+        const sanitized = value.replace(/[^0-9.,-]/g, '').replace(/,/g, '');
+        return Number(sanitized);
+    }
+    return Number(value);
+}
+
+function getClientDeskPlanDurationDays(tier: ClientDeskPlanTier): number {
+    if (tier === 'pro_monthly') return 30;
+    if (tier === 'pro_quarterly') return 90;
+    if (tier === 'pro_yearly') return 365;
+    return 0;
+}
+
 // =============================================
 // FASTPIK SUBSCRIPTION HANDLER
 // =============================================
@@ -296,37 +458,49 @@ async function handleClientDeskSubscription(
         return jsonResponse('Success', `Ignored status: ${rawStatus}`);
     }
 
-    // Determine plan from amount
-    // Monthly: 39rb, Quarterly: 99rb, Yearly: 349rb, Lifetime: 549rb
-    let planDurationDays = 0;
-    let planTier = 'free';
-    let isLifetime = false;
-    const amountNum = Number(amount);
+    // Determine plan from name first, then validate amount for that same plan
+    const amountNum = parseAmountNumber(amount);
+    const planDetection = extractClientDeskPlanFromName(orderData, payload);
+    const productName = orderData.productName || orderData.product_name || payload.data?.productName || payload.data?.product_name || 'unknown';
 
-    if (amountNum >= 38000 && amountNum <= 40000) {
-        planTier = 'pro_monthly';
-        planDurationDays = 30;
-    } else if (amountNum >= 98000 && amountNum <= 100000) {
-        planTier = 'pro_quarterly';
-        planDurationDays = 90;
-    } else if (amountNum >= 348000 && amountNum <= 350000) {
-        planTier = 'pro_yearly';
-        planDurationDays = 365;
-    } else if (amountNum >= 548000 && amountNum <= 550000) {
-        planTier = 'lifetime';
-        isLifetime = true;
-    } else {
-        console.log(`[Client Desk Webhook] Unknown amount: ${amountNum}`);
+    if (!planDetection.tier) {
+        console.log(`[Client Desk Webhook] Plan keyword not detected. Amount: ${amountNum}`);
+        const sourcePreview = planDetection.searchableTexts.slice(0, 3).join(' | ') || '-';
         await notifyAlert(
             `<b>⚠️ Client Desk: Unknown Amount</b>\n\n` +
-            `📦 Product: ${(payload.data as any)?.productName || 'unknown'}\n` +
+            `📦 Product: ${productName}\n` +
             `👤 ${name}\n` +
             `📧 ${email}\n` +
-            `💰 Rp ${amountNum.toLocaleString('id-ID')}\n` +
+            `💰 Rp ${Number.isFinite(amountNum) ? amountNum.toLocaleString('id-ID') : String(amount)}\n` +
+            `🔎 Plan from name: not detected\n` +
+            `📝 Source: ${sourcePreview}\n` +
             `🧾 Order: ${transactionId}`
         );
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
     }
+
+    const priceValidation = validateClientDeskAmountForTier(planDetection.tier, amountNum);
+    if (!priceValidation.isValid) {
+        console.log(`[Client Desk Webhook] Amount outside allowed range for ${planDetection.tier}: ${amountNum}`);
+        await notifyAlert(
+            `<b>⚠️ Client Desk: Unknown Amount</b>\n\n` +
+            `📦 Product: ${productName}\n` +
+            `👤 ${name}\n` +
+            `📧 ${email}\n` +
+            `💰 Amount: Rp ${Number.isFinite(amountNum) ? amountNum.toLocaleString('id-ID') : String(amount)}\n` +
+            `🔎 Plan from name: ${planDetection.tier}\n` +
+            `🔤 Keyword: ${planDetection.keyword || '-'}\n` +
+            `💵 Base: Rp ${priceValidation.basePrice.toLocaleString('id-ID')}\n` +
+            `📉 Min (50%): Rp ${priceValidation.minAllowed.toLocaleString('id-ID')}\n` +
+            `📈 Max: Rp ${priceValidation.maxAllowed.toLocaleString('id-ID')}\n` +
+            `🧾 Order: ${transactionId}`
+        );
+        return jsonResponse('Success', `Unknown amount: ${amountNum}`);
+    }
+
+    const planTier = planDetection.tier;
+    const isLifetime = planTier === 'lifetime';
+    const planDurationDays = isLifetime ? 0 : getClientDeskPlanDurationDays(planTier);
 
     // Find or Create User in Client Desk Supabase
     let userId: string | undefined;
@@ -715,6 +889,7 @@ export async function POST(request: NextRequest) {
             customerName: payload.customerName || payload.customer_name,
             customerEmail: payload.customerEmail || payload.customer_email,
             addOn: payload.addOn || payload.addons || payload.items,
+            custom_field: payload.custom_field,
         };
 
         // Validate required fields
