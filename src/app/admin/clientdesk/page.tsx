@@ -8,12 +8,34 @@ interface UserData {
     id: string;
     email: string;
     name: string;
+    role: string | null;
+    vendorSlug: string | null;
+    tenantId: string | null;
+    tenantName: string | null;
     createdAt: string;
     tier: string;
     status: string;
     expiresAt: string | null;
     lastSignIn: string | null;
     emailConfirmed: boolean;
+}
+
+interface TenantData {
+    id: string;
+    slug: string;
+    name: string;
+    domain: string | null;
+    is_active: boolean;
+}
+
+interface TenantAccountData {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    role: string | null;
+    vendor_slug: string | null;
+    tenant_id: string | null;
+    tenant_name: string | null;
 }
 
 // SVG Icons
@@ -45,6 +67,12 @@ const TrashIcon = () => (
 const EditIcon = () => (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+    </svg>
+);
+const LinkIcon = () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07L12 4" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07L12 20" />
     </svg>
 );
 const SortIcon = () => (
@@ -111,8 +139,10 @@ function Dialog({ open, onClose, children }: { open: boolean; onClose: () => voi
 export default function ClientDeskPage() {
     const { t } = useLang();
     const [users, setUsers] = useState<UserData[]>([]);
+    const [tenants, setTenants] = useState<TenantData[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [toast, setToast] = useState<{ success: boolean; message: string } | null>(null);
     const [sortAsc, setSortAsc] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterTier, setFilterTier] = useState<string>('all');
@@ -131,18 +161,57 @@ export default function ClientDeskPage() {
     const [expiryDate, setExpiryDate] = useState('');
     const [selectedTier, setSelectedTier] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
+    const [assignUser, setAssignUser] = useState<UserData | null>(null);
+    const [assignTenantId, setAssignTenantId] = useState('');
+    const [assignLoading, setAssignLoading] = useState(false);
+    const [assignError, setAssignError] = useState('');
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
-            const res = await fetch('/api/admin/clientdesk-users');
-            const data = await res.json();
-            if (data.success) {
-                setUsers(data.users);
-            } else {
-                setError(data.message || 'Failed to fetch users');
+            const [usersRes, accountsRes, tenantsRes] = await Promise.all([
+                fetch('/api/admin/clientdesk-users'),
+                fetch('/api/admin/vendor-clientdesk-accounts'),
+                fetch('/api/admin/vendor-clientdesk'),
+            ]);
+
+            const usersData = await usersRes.json();
+            const accountsData = await accountsRes.json();
+            const tenantsData = await tenantsRes.json();
+
+            if (!usersData.success) {
+                setError(usersData.message || 'Failed to fetch users');
+                return;
             }
+
+            if (!accountsRes.ok || !accountsData.success) {
+                setError(accountsData.error || 'Failed to fetch tenant accounts');
+                return;
+            }
+
+            if (!tenantsRes.ok || !Array.isArray(tenantsData)) {
+                setError('Failed to fetch tenants');
+                return;
+            }
+
+            const accountMap = new Map(
+                ((accountsData.accounts || []) as TenantAccountData[]).map((account) => [account.id, account])
+            );
+
+            const mergedUsers = (usersData.users || []).map((user: UserData) => {
+                const account = accountMap.get(user.id);
+                return {
+                    ...user,
+                    role: account?.role || null,
+                    vendorSlug: account?.vendor_slug || null,
+                    tenantId: account?.tenant_id || null,
+                    tenantName: account?.tenant_name || null,
+                };
+            });
+
+            setUsers(mergedUsers);
+            setTenants((tenantsData as TenantData[]).filter((tenant) => tenant.is_active));
         } catch {
             setError('Connection error');
         } finally {
@@ -151,6 +220,12 @@ export default function ClientDeskPage() {
     }, []);
 
     useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+    useEffect(() => {
+        if (!toast) return;
+        const timer = window.setTimeout(() => setToast(null), 2500);
+        return () => window.clearTimeout(timer);
+    }, [toast]);
 
     const filteredUsers = users.filter((u) => {
         if (searchQuery.trim()) {
@@ -253,8 +328,61 @@ export default function ClientDeskPage() {
         finally { setActionLoading(false); }
     };
 
+    const openAssignDialog = (user: UserData) => {
+        setAssignUser(user);
+        setAssignTenantId(user.tenantId || '');
+        setAssignError('');
+    };
+
+    const handleAssignTenant = async () => {
+        if (!assignUser || !assignTenantId) {
+            setAssignError(t('clientdesk.tenantRequired'));
+            return;
+        }
+
+        setAssignLoading(true);
+        setAssignError('');
+        try {
+            const res = await fetch('/api/admin/vendor-clientdesk-accounts', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    profile_id: assignUser.id,
+                    tenant_id: assignTenantId,
+                }),
+            });
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                setAssignError(data.error || t('clientdesk.assignFailed'));
+                return;
+            }
+
+            setToast({
+                success: true,
+                message: t('clientdesk.assignSuccess'),
+            });
+            setAssignUser(null);
+            await fetchUsers();
+        } catch {
+            setAssignError('Connection error');
+        } finally {
+            setAssignLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-6 animate-fade-in">
+            {toast && (
+                <div className={`fixed right-4 top-4 z-[10000] px-4 py-2.5 rounded-xl border shadow-[var(--shadow-lg)] text-sm animate-fade-in ${
+                    toast.success
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-danger/10 border-danger/20 text-danger'
+                }`}>
+                    {toast.message}
+                </div>
+            )}
+
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
@@ -449,6 +577,13 @@ export default function ClientDeskPage() {
                                         <td className="px-4 py-2.5 text-right">
                                             <div className="flex justify-end gap-1.5">
                                                 <button
+                                                    onClick={() => openAssignDialog(user)}
+                                                    className="px-2.5 py-1.5 bg-indigo-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-indigo-600 transition-all active:scale-90 flex items-center gap-1"
+                                                    title={user.tenantId ? t('clientdesk.reassign') : t('clientdesk.assign')}
+                                                >
+                                                    <LinkIcon /> {user.tenantId ? t('clientdesk.reassign') : t('clientdesk.assign')}
+                                                </button>
+                                                <button
                                                     onClick={() => {
                                                         setEditUser(user);
                                                         setSelectedTier(user.tier === 'free' ? 'free' : user.tier);
@@ -492,6 +627,12 @@ export default function ClientDeskPage() {
                                         <p>{t('clientdesk.colLastLogin')}: {!user.emailConfirmed ? <span className="text-red-500 font-medium">⚠️ {t('clientdesk.unverified')}</span> : user.lastSignIn ? <span>{formatDateTime(user.lastSignIn)?.date} {formatDateTime(user.lastSignIn)?.time}</span> : '—'}</p>
                                     </div>
                                     <div className="flex gap-1.5">
+                                        <button
+                                            onClick={() => openAssignDialog(user)}
+                                            className="px-2.5 py-1.5 bg-indigo-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-indigo-600 transition-all active:scale-90 flex items-center gap-1"
+                                        >
+                                            <LinkIcon /> {user.tenantId ? t('clientdesk.reassign') : t('clientdesk.assign')}
+                                        </button>
                                         <button
                                             onClick={() => {
                                                 setEditUser(user);
@@ -589,6 +730,68 @@ export default function ClientDeskPage() {
                             {t('clientdesk.change')}
                         </button>
                     </div>
+                </div>
+            </Dialog>
+
+            {/* Assign Tenant Dialog */}
+            <Dialog open={!!assignUser} onClose={() => setAssignUser(null)}>
+                <h3 className="text-lg font-semibold text-fg mb-1">
+                    {assignUser?.tenantId ? t('clientdesk.reassignTitle') : t('clientdesk.assignTitle')}
+                </h3>
+                <p className="text-fg-muted text-sm mb-5">
+                    {t('clientdesk.assignDesc')} <strong>{assignUser?.name}</strong>
+                </p>
+
+                <div className="space-y-3">
+                    <div className="bg-bg rounded-xl border border-border p-3">
+                        <p className="text-xs text-fg-muted">{t('clientdesk.currentTenant')}</p>
+                        <p className="text-sm font-medium text-fg mt-0.5">
+                            {assignUser?.tenantName || t('clientdesk.noTenantAssigned')}
+                        </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-fg">{t('clientdesk.selectTenant')}</label>
+                        <select
+                            value={assignTenantId}
+                            onChange={(e) => setAssignTenantId(e.target.value)}
+                            className="w-full px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent/20"
+                        >
+                            <option value="">{t('clientdesk.selectTenant')}</option>
+                            {tenants.map((tenant) => (
+                                <option key={tenant.id} value={tenant.id}>
+                                    {tenant.name} {tenant.domain ? `(${tenant.domain})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {assignError && (
+                        <div className="text-danger text-sm bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">
+                            {assignError}
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-end gap-2 mt-5">
+                    <button
+                        onClick={() => setAssignUser(null)}
+                        className="px-4 py-2 bg-bg border border-border rounded-xl text-sm text-fg cursor-pointer hover:bg-bg-secondary transition-all"
+                    >
+                        {t('dialog.cancel')}
+                    </button>
+                    <button
+                        onClick={handleAssignTenant}
+                        disabled={assignLoading}
+                        className="px-4 py-2 bg-accent text-accent-fg rounded-xl text-sm font-medium cursor-pointer hover:opacity-85 transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                        {assignLoading ? (
+                            <span className="w-3.5 h-3.5 border-2 border-accent-fg/30 border-t-accent-fg rounded-full animate-spin" />
+                        ) : (
+                            <LinkIcon />
+                        )}
+                        {assignLoading ? t('clientdesk.assigning') : t('clientdesk.assignSave')}
+                    </button>
                 </div>
             </Dialog>
         </div>
