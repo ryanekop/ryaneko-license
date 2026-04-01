@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
+
+const TABLE_CANDIDATES = ['university_references', 'univeristy_references'] as const;
+let cachedTableName: string | null = null;
 
 function normalizeName(value: unknown): string {
     if (typeof value !== 'string') return '';
@@ -17,10 +20,30 @@ function isUniqueViolation(error: unknown): boolean {
     return code === '23505';
 }
 
+async function resolveUniversityTableName() {
+    if (cachedTableName) return cachedTableName;
+
+    const supabase = getClientDeskSupabase();
+    for (const table of TABLE_CANDIDATES) {
+        const { error } = await supabase
+            .from(table)
+            .select('id', { count: 'exact', head: true });
+
+        if (!error) {
+            cachedTableName = table;
+            return table;
+        }
+    }
+
+    throw new Error(`University table not found. Checked: ${TABLE_CANDIDATES.join(', ')}`);
+}
+
 export async function GET() {
     try {
-        const { data, error } = await supabaseAdmin
-            .from('universities')
+        const supabase = getClientDeskSupabase();
+        const tableName = await resolveUniversityTableName();
+        const { data, error } = await supabase
+            .from(tableName)
             .select('*')
             .order('abbreviation', { ascending: true });
 
@@ -36,6 +59,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
     try {
+        const supabase = getClientDeskSupabase();
+        const tableName = await resolveUniversityTableName();
         const body = await request.json();
         const name = normalizeName(body?.name);
         const abbreviation = normalizeAbbreviation(body?.abbreviation);
@@ -44,8 +69,8 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'name and abbreviation are required' }, { status: 400 });
         }
 
-        const { data, error } = await supabaseAdmin
-            .from('universities')
+        const { data, error } = await supabase
+            .from(tableName)
             .insert({
                 name,
                 abbreviation,
@@ -68,6 +93,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
     try {
+        const supabase = getClientDeskSupabase();
+        const tableName = await resolveUniversityTableName();
         const body = await request.json();
         const id = typeof body?.id === 'string' ? body.id.trim() : '';
         const name = normalizeName(body?.name);
@@ -77,12 +104,11 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'id, name, and abbreviation are required' }, { status: 400 });
         }
 
-        const { data, error } = await supabaseAdmin
-            .from('universities')
+        const { data, error } = await supabase
+            .from(tableName)
             .update({
                 name,
                 abbreviation,
-                updated_at: new Date().toISOString(),
             })
             .eq('id', id)
             .select()
@@ -103,14 +129,16 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
     try {
+        const supabase = getClientDeskSupabase();
+        const tableName = await resolveUniversityTableName();
         const id = request.nextUrl.searchParams.get('id')?.trim() || '';
 
         if (!id) {
             return NextResponse.json({ error: 'id is required' }, { status: 400 });
         }
 
-        const { error } = await supabaseAdmin
-            .from('universities')
+        const { error } = await supabase
+            .from(tableName)
             .delete()
             .eq('id', id);
 

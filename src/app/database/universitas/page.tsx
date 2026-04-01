@@ -7,7 +7,7 @@ import { useLang } from '@/lib/providers';
 interface University {
     id: string;
     name: string;
-    abbreviation: string;
+    abbreviation: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -116,7 +116,7 @@ export default function UniversitiesPage() {
     const openEdit = (university: University) => {
         setEditingUniversity(university);
         setFormName(university.name);
-        setFormAbbreviation(university.abbreviation);
+        setFormAbbreviation(university.abbreviation || '');
         setFormResult(null);
         setShowForm(true);
     };
@@ -196,7 +196,7 @@ export default function UniversitiesPage() {
     const filteredUniversities = universities.filter((university) => {
         const q = search.trim().toLowerCase();
         if (!q) return true;
-        return university.name.toLowerCase().includes(q) || university.abbreviation.toLowerCase().includes(q);
+        return university.name.toLowerCase().includes(q) || (university.abbreviation || '').toLowerCase().includes(q);
     });
 
     return (
@@ -278,7 +278,7 @@ export default function UniversitiesPage() {
                                     <td className="px-4 py-3.5 text-fg font-medium">{university.name}</td>
                                     <td className="px-4 py-3.5">
                                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-accent/10 text-fg border border-border">
-                                            {university.abbreviation}
+                                            {university.abbreviation || '—'}
                                         </span>
                                     </td>
                                     <td className="px-4 py-3.5 text-fg-secondary">{formatDate(university.created_at)}</td>
@@ -367,7 +367,7 @@ export default function UniversitiesPage() {
                     {t('database.deleteDesc')}
                     {deleteTarget && (
                         <span className="block mt-2 text-fg font-medium">
-                            {deleteTarget.name} ({deleteTarget.abbreviation})
+                            {deleteTarget.name} ({deleteTarget.abbreviation || '—'})
                         </span>
                     )}
                 </p>
