@@ -12,6 +12,15 @@ interface University {
     updated_at: string;
 }
 
+interface UniversitiesResponse {
+    items: University[];
+    total: number;
+    page: number;
+    pageSize: number;
+}
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+
 const DatabaseIcon = () => (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <ellipse cx="12" cy="5" rx="9" ry="3" />
@@ -73,6 +82,10 @@ export default function UniversitiesPage() {
     const { t } = useLang();
     const [universities, setUniversities] = useState<University[]>([]);
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(25);
+    const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -86,20 +99,49 @@ export default function UniversitiesPage() {
     const [deleteTarget, setDeleteTarget] = useState<University | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
 
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(search.trim());
+            setPage(1);
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [search]);
+
     const fetchUniversities = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
-            const res = await fetch('/api/admin/universities');
+            const params = new URLSearchParams({
+                q: debouncedSearch,
+                page: String(page),
+                pageSize: String(pageSize),
+            });
+
+            const res = await fetch(`/api/admin/universities?${params.toString()}`);
             if (!res.ok) throw new Error(`Status ${res.status}`);
             const data = await res.json();
-            setUniversities(Array.isArray(data) ? data : []);
+
+            if (Array.isArray(data)) {
+                setUniversities(data);
+                setTotal(data.length);
+                return;
+            }
+
+            const parsed = data as UniversitiesResponse;
+            setUniversities(Array.isArray(parsed.items) ? parsed.items : []);
+            setTotal(typeof parsed.total === 'number' ? parsed.total : 0);
+            if (typeof parsed.page === 'number') {
+                setPage(parsed.page);
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Connection error');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [debouncedSearch, page, pageSize]);
 
     useEffect(() => {
         fetchUniversities();
@@ -150,16 +192,25 @@ export default function UniversitiesPage() {
 
             if (!res.ok) {
                 if (res.status === 409) {
-                    setFormResult({ success: false, message: t('database.duplicate') });
+                    if (data?.error === 'name already exists') {
+                        setFormResult({ success: false, message: t('database.duplicateName') });
+                    } else {
+                        setFormResult({ success: false, message: t('database.duplicate') });
+                    }
                 } else {
                     setFormResult({ success: false, message: data.error || 'Failed' });
                 }
                 return;
             }
 
+            const isUpgraded = !editingUniversity && res.status === 200 && data?.action === 'upgraded';
             setFormResult({
                 success: true,
-                message: editingUniversity ? t('database.updated') : t('database.created'),
+                message: isUpgraded
+                    ? t('database.upgraded')
+                    : editingUniversity
+                        ? t('database.updated')
+                        : t('database.created'),
             });
             await fetchUniversities();
             setTimeout(() => setShowForm(false), 900);
@@ -192,12 +243,6 @@ export default function UniversitiesPage() {
             setDeleteLoading(false);
         }
     };
-
-    const filteredUniversities = universities.filter((university) => {
-        const q = search.trim().toLowerCase();
-        if (!q) return true;
-        return university.name.toLowerCase().includes(q) || (university.abbreviation || '').toLowerCase().includes(q);
-    });
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -239,7 +284,8 @@ export default function UniversitiesPage() {
                     </div>
                 </div>
                 <div className="text-sm text-fg-muted">
-                    {t('database.total')}: <span className="font-semibold text-fg">{filteredUniversities.length}</span>
+                    {t('database.total')}: <span className="font-semibold text-fg">{total}</span>
+                    {loading && <span className="ml-2 text-xs">{t('list.loading')}</span>}
                 </div>
             </div>
 
@@ -266,14 +312,14 @@ export default function UniversitiesPage() {
                                     <span className="inline-block w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
                                 </td>
                             </tr>
-                        ) : filteredUniversities.length === 0 ? (
+                        ) : universities.length === 0 ? (
                             <tr>
                                 <td colSpan={4} className="px-4 py-10 text-center text-fg-muted">
                                     {t('database.empty')}
                                 </td>
                             </tr>
                         ) : (
-                            filteredUniversities.map((university) => (
+                            universities.map((university) => (
                                 <tr key={university.id} className="border-t border-border-light hover:bg-bg-secondary/70 transition-colors">
                                     <td className="px-4 py-3.5 text-fg font-medium">{university.name}</td>
                                     <td className="px-4 py-3.5">
@@ -303,6 +349,50 @@ export default function UniversitiesPage() {
                         )}
                     </tbody>
                 </table>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm text-fg-secondary">
+                    <span>{t('database.rowsPerPage')}</span>
+                    <select
+                        value={pageSize}
+                        onChange={(e) => {
+                            const value = Number.parseInt(e.target.value, 10);
+                            if (PAGE_SIZE_OPTIONS.includes(value as (typeof PAGE_SIZE_OPTIONS)[number])) {
+                                setPageSize(value as (typeof PAGE_SIZE_OPTIONS)[number]);
+                                setPage(1);
+                            }
+                        }}
+                        disabled={loading}
+                        className="px-2 py-1.5 bg-bg-card border border-border rounded-lg text-sm text-fg focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
+                    >
+                        {PAGE_SIZE_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                        disabled={loading || page <= 1}
+                        className="px-3 py-2 border border-border rounded-lg text-sm text-fg-secondary cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 disabled:opacity-60"
+                    >
+                        {t('database.prev')}
+                    </button>
+                    <div className="text-sm text-fg-secondary min-w-[120px] text-center">
+                        {t('database.page')} {page} / {totalPages}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                        disabled={loading || page >= totalPages}
+                        className="px-3 py-2 border border-border rounded-lg text-sm text-fg-secondary cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 disabled:opacity-60"
+                    >
+                        {t('database.next')}
+                    </button>
+                </div>
             </div>
 
             <Dialog open={showForm} onClose={() => setShowForm(false)}>
