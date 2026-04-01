@@ -138,6 +138,19 @@ CREATE INDEX idx_activations_license_id ON activations(license_id);
 CREATE INDEX idx_activations_created_at ON activations(created_at DESC);
 
 -- =============================================
+-- TABLE: universities
+-- =============================================
+CREATE TABLE universities (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  abbreviation TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_universities_name ON universities(name);
+
+-- =============================================
 -- ROW LEVEL SECURITY (RLS)
 -- =============================================
 -- For now, disable RLS - we'll use service role key for all operations
@@ -147,9 +160,11 @@ ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE licenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE universities ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role to do everything
 CREATE POLICY "Service role full access" ON products FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON licenses FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON purchases FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON activations FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON universities FOR ALL USING (true);

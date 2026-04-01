@@ -283,6 +283,14 @@ const GridMenuIcon = () => (
     </svg>
 );
 
+const DatabaseMenuIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <ellipse cx="12" cy="5" rx="9" ry="3" />
+        <path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" />
+        <path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3" />
+    </svg>
+);
+
 const SunIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />
@@ -572,6 +580,22 @@ export default function WebhookTestPage() {
                                     }}
                                 >
                                     <GridMenuIcon /> {t('home.panel')}
+                                </Link>
+                                <Link
+                                    href="/database"
+                                    onClick={() => setNavOpen(false)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        padding: '10px 16px',
+                                        fontSize: '14px',
+                                        color: 'var(--fg)',
+                                        textDecoration: 'none',
+                                        transition: 'background 0.15s',
+                                    }}
+                                >
+                                    <DatabaseMenuIcon /> {t('home.database')}
                                 </Link>
                             </div>
                         </>
