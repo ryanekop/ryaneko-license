@@ -125,7 +125,7 @@ export default function UniversitiesPage() {
         e.preventDefault();
 
         const cleanName = formName.trim();
-        const cleanAbbreviation = formAbbreviation.trim().toUpperCase();
+        const cleanAbbreviation = formAbbreviation.trim();
 
         if (!cleanName || !cleanAbbreviation) {
             setFormResult({ success: false, message: t('database.required') });
@@ -327,8 +327,8 @@ export default function UniversitiesPage() {
                         <input
                             type="text"
                             value={formAbbreviation}
-                            onChange={(e) => setFormAbbreviation(e.target.value.toUpperCase())}
-                            className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-sm text-fg placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 uppercase"
+                            onChange={(e) => setFormAbbreviation(e.target.value)}
+                            className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-sm text-fg placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20"
                             required
                         />
                     </div>

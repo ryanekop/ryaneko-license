@@ -11,7 +11,7 @@ function normalizeName(value: unknown): string {
 
 function normalizeAbbreviation(value: unknown): string {
     if (typeof value !== 'string') return '';
-    return value.trim().toUpperCase();
+    return value.trim();
 }
 
 function isUniqueViolation(error: unknown): boolean {
