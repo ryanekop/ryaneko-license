@@ -526,8 +526,9 @@ async function handleFastpikSubscription(
 
     if (createError) {
         // User already exists — find them
-        userId = await findUserIdByEmail(fastpikSupabase, email);
-        if (userId) {
+        const existingUserId = await findUserIdByEmail(fastpikSupabase, email);
+        if (existingUserId) {
+            userId = existingUserId;
             // Send magic link for existing user
             try {
                 await fastpikSupabase.auth.signInWithOtp({
@@ -719,8 +720,9 @@ async function handleClientDeskSubscription(
 
     if (createError) {
         // User already exists — find them
-        userId = await findUserIdByEmail(clientdeskSupabase, email);
-        if (userId) {
+        const existingUserId = await findUserIdByEmail(clientdeskSupabase, email);
+        if (existingUserId) {
+            userId = existingUserId;
             // Send magic link for existing user
             try {
                 await clientdeskSupabase.auth.signInWithOtp({
