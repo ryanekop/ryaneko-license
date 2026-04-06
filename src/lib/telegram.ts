@@ -10,6 +10,15 @@ const EMOJI_MAP: Record<NotificationType, string> = {
     info: 'ℹ️',
 };
 
+export function escapeTelegramHtml(value: unknown): string {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 export async function sendTelegramNotification(
     type: NotificationType,
     message: string
@@ -37,8 +46,12 @@ export async function sendTelegramNotification(
         );
 
         if (!response.ok) {
-            const error = await response.text();
-            console.error('Telegram API error:', error);
+            const errorBody = await response.text();
+            console.error('Telegram API error:', {
+                status: response.status,
+                statusText: response.statusText,
+                body: errorBody,
+            });
             return false;
         }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFastpikSupabase } from '@/lib/fastpik-supabase';
+import { escapeTelegramHtml, notifyAlert, notifyInfo } from '@/lib/telegram';
 
 // Direct connection to Fastpik Supabase (bypasses Vercel Attack Challenge)
 const fastpikSupabase = getFastpikSupabase();
@@ -55,43 +56,88 @@ export async function GET() {
 export async function POST(request: NextRequest) {
     try {
         const { name, email, trialDays = 3 } = await request.json();
+        const safeName = escapeTelegramHtml(name);
+        const safeEmail = escapeTelegramHtml(email);
 
         if (!name || !email) {
             return NextResponse.json({ success: false, message: 'Name and email are required' }, { status: 400 });
         }
 
+        const parsedTrialDays = Number.parseInt(String(trialDays), 10);
+        const normalizedTrialDays = Number.isFinite(parsedTrialDays) && parsedTrialDays > 0 ? parsedTrialDays : 3;
+
         // Invite user by email
         const { data: authData, error: authError } = await fastpikSupabase.auth.admin.inviteUserByEmail(email, {
             data: { full_name: name },
-            redirectTo: 'https://fastpik.ryanekoapp.web.id/auth/callback',
+            redirectTo: 'https://fastpik.ryanekoapp.web.id/id/auth/callback?next=/id/dashboard',
         });
 
         if (authError) {
+            await notifyAlert(
+                `<b>⚠️ Fastpik Invite Failed</b>\n\n` +
+                `👤 ${safeName}\n` +
+                `📧 ${safeEmail}\n` +
+                `❌ ${escapeTelegramHtml(authError.message)}`
+            );
             return NextResponse.json({ success: false, message: authError.message }, { status: 400 });
         }
 
         if (!authData.user) {
+            await notifyAlert(
+                `<b>⚠️ Fastpik Invite Failed</b>\n\n` +
+                `👤 ${safeName}\n` +
+                `📧 ${safeEmail}\n` +
+                `❌ Missing user payload from Supabase`
+            );
             return NextResponse.json({ success: false, message: 'Failed to create user' }, { status: 500 });
         }
 
         // Create profile
-        await fastpikSupabase.from('profiles').insert({
+        const { error: profileError } = await fastpikSupabase.from('profiles').insert({
             id: authData.user.id,
             email,
             full_name: name,
         });
+        if (profileError) {
+            await notifyAlert(
+                `<b>⚠️ Fastpik Invite Partial Failure</b>\n\n` +
+                `👤 ${safeName}\n` +
+                `📧 ${safeEmail}\n` +
+                `🆔 ${escapeTelegramHtml(authData.user.id)}\n` +
+                `❌ Profile insert: ${escapeTelegramHtml(profileError.message)}`
+            );
+            return NextResponse.json({ success: false, message: profileError.message }, { status: 500 });
+        }
 
         // Create trial subscription
         const trialEndDate = new Date();
-        trialEndDate.setDate(trialEndDate.getDate() + parseInt(trialDays));
+        trialEndDate.setDate(trialEndDate.getDate() + normalizedTrialDays);
 
-        await fastpikSupabase.from('subscriptions').insert({
+        const { error: subscriptionError } = await fastpikSupabase.from('subscriptions').insert({
             user_id: authData.user.id,
             tier: 'free',
             status: 'trial',
             start_date: new Date().toISOString(),
             trial_end_date: trialEndDate.toISOString(),
         });
+        if (subscriptionError) {
+            await notifyAlert(
+                `<b>⚠️ Fastpik Invite Partial Failure</b>\n\n` +
+                `👤 ${safeName}\n` +
+                `📧 ${safeEmail}\n` +
+                `🆔 ${escapeTelegramHtml(authData.user.id)}\n` +
+                `❌ Subscription insert: ${escapeTelegramHtml(subscriptionError.message)}`
+            );
+            return NextResponse.json({ success: false, message: subscriptionError.message }, { status: 500 });
+        }
+
+        await notifyInfo(
+            `<b>Fastpik Invite Sent</b>\n\n` +
+            `👤 ${safeName}\n` +
+            `📧 ${safeEmail}\n` +
+            `🗓️ Trial: ${normalizedTrialDays} hari\n` +
+            `🆔 ${escapeTelegramHtml(authData.user.id)}`
+        );
 
         return NextResponse.json({
             success: true,
@@ -100,6 +146,10 @@ export async function POST(request: NextRequest) {
         });
     } catch (error: any) {
         console.error('Fastpik users POST error:', error);
+        await notifyAlert(
+            `<b>⚠️ Fastpik Invite Error</b>\n\n` +
+            `❌ ${escapeTelegramHtml(error?.message || 'Unknown server error')}`
+        );
         return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
 }

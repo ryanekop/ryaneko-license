@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
+import { escapeTelegramHtml, notifyAlert, notifyInfo } from '@/lib/telegram';
 
 // GET - list users
 export async function GET() {
@@ -55,42 +56,87 @@ export async function POST(request: NextRequest) {
     try {
         const supabase = getClientDeskSupabase();
         const { name, email, trialDays = 5 } = await request.json();
+        const safeName = escapeTelegramHtml(name);
+        const safeEmail = escapeTelegramHtml(email);
 
         if (!name || !email) {
             return NextResponse.json({ success: false, message: 'Name and email are required' }, { status: 400 });
         }
 
+        const parsedTrialDays = Number.parseInt(String(trialDays), 10);
+        const normalizedTrialDays = Number.isFinite(parsedTrialDays) && parsedTrialDays > 0 ? parsedTrialDays : 5;
+
         // Invite user by email
         const { data: authData, error: authError } = await supabase.auth.admin.inviteUserByEmail(email, {
             data: { full_name: name },
-            redirectTo: 'https://clientdesk.ryanekoapp.web.id/auth/callback',
+            redirectTo: 'https://clientdesk.ryanekoapp.web.id/id/auth/callback?next=/id/dashboard',
         });
 
         if (authError) {
+            await notifyAlert(
+                `<b>⚠️ Client Desk Invite Failed</b>\n\n` +
+                `👤 ${safeName}\n` +
+                `📧 ${safeEmail}\n` +
+                `❌ ${escapeTelegramHtml(authError.message)}`
+            );
             return NextResponse.json({ success: false, message: authError.message }, { status: 400 });
         }
 
         if (!authData.user) {
+            await notifyAlert(
+                `<b>⚠️ Client Desk Invite Failed</b>\n\n` +
+                `👤 ${safeName}\n` +
+                `📧 ${safeEmail}\n` +
+                `❌ Missing user payload from Supabase`
+            );
             return NextResponse.json({ success: false, message: 'Failed to create user' }, { status: 500 });
         }
 
         // Create profile
-        await supabase.from('profiles').insert({
+        const { error: profileError } = await supabase.from('profiles').insert({
             id: authData.user.id,
             full_name: name,
         });
+        if (profileError) {
+            await notifyAlert(
+                `<b>⚠️ Client Desk Invite Partial Failure</b>\n\n` +
+                `👤 ${safeName}\n` +
+                `📧 ${safeEmail}\n` +
+                `🆔 ${escapeTelegramHtml(authData.user.id)}\n` +
+                `❌ Profile insert: ${escapeTelegramHtml(profileError.message)}`
+            );
+            return NextResponse.json({ success: false, message: profileError.message }, { status: 500 });
+        }
 
         // Create trial subscription
         const trialEndDate = new Date();
-        trialEndDate.setDate(trialEndDate.getDate() + parseInt(trialDays));
+        trialEndDate.setDate(trialEndDate.getDate() + normalizedTrialDays);
 
-        await supabase.from('subscriptions').insert({
+        const { error: subscriptionError } = await supabase.from('subscriptions').insert({
             user_id: authData.user.id,
             tier: 'free',
             status: 'trial',
             start_date: new Date().toISOString(),
             trial_end_date: trialEndDate.toISOString(),
         });
+        if (subscriptionError) {
+            await notifyAlert(
+                `<b>⚠️ Client Desk Invite Partial Failure</b>\n\n` +
+                `👤 ${safeName}\n` +
+                `📧 ${safeEmail}\n` +
+                `🆔 ${escapeTelegramHtml(authData.user.id)}\n` +
+                `❌ Subscription insert: ${escapeTelegramHtml(subscriptionError.message)}`
+            );
+            return NextResponse.json({ success: false, message: subscriptionError.message }, { status: 500 });
+        }
+
+        await notifyInfo(
+            `<b>Client Desk Invite Sent</b>\n\n` +
+            `👤 ${safeName}\n` +
+            `📧 ${safeEmail}\n` +
+            `🗓️ Trial: ${normalizedTrialDays} hari\n` +
+            `🆔 ${escapeTelegramHtml(authData.user.id)}`
+        );
 
         return NextResponse.json({
             success: true,
@@ -99,6 +145,10 @@ export async function POST(request: NextRequest) {
         });
     } catch (error: any) {
         console.error('Client Desk users POST error:', error);
+        await notifyAlert(
+            `<b>⚠️ Client Desk Invite Error</b>\n\n` +
+            `❌ ${escapeTelegramHtml(error?.message || 'Unknown server error')}`
+        );
         return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
 }

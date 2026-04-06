@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getFastpikSupabase } from '@/lib/fastpik-supabase';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
-import { notifyPurchase, notifyAlert } from '@/lib/telegram';
+import { escapeTelegramHtml, notifyPurchase, notifyAlert } from '@/lib/telegram';
 import { sendEmail } from '@/lib/resend';
 import { getEmailHtml, getEmailSubject } from '@/lib/email-templates';
 import { generateHash } from '@/lib/crypto';
@@ -18,6 +18,18 @@ import type {
 // Response helper
 function jsonResponse(status: string, message: string, statusCode = 200) {
     return NextResponse.json({ status, message }, { status: statusCode });
+}
+
+const tg = (value: unknown) => escapeTelegramHtml(value);
+
+function toErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'string') return error;
+    try {
+        return JSON.stringify(error);
+    } catch {
+        return String(error);
+    }
 }
 
 // =============================================
@@ -166,6 +178,11 @@ function parseAmountNumber(value: unknown): number {
     return Number.isFinite(parsed) ? Math.round(parsed) : NaN;
 }
 
+function formatAmountIdr(value: unknown): string {
+    const parsed = parseAmountNumber(value);
+    return Number.isFinite(parsed) ? parsed.toLocaleString('id-ID') : tg(value ?? '-');
+}
+
 function detectClientDeskPlanFromAmount(amount: number): ClientDeskPlanTier | null {
     if (!Number.isFinite(amount)) return null;
 
@@ -282,14 +299,33 @@ async function findUserIdByEmail(supabase: any, email: string): Promise<string |
 
 type BundleApp = 'clientdesk' | 'fastpik';
 
+async function notifyAuthEmailFailure(params: {
+    appLabel: string;
+    emailFlow: 'OTP' | 'Password Reset';
+    email: string;
+    name: string;
+    transactionId: string;
+    error: unknown;
+}) {
+    const { appLabel, emailFlow, email, name, transactionId, error } = params;
+    await notifyAlert(
+        `<b>⚠️ ${tg(appLabel)}: ${emailFlow} Failed</b>\n\n` +
+        `👤 ${tg(name)}\n` +
+        `📧 ${tg(email)}\n` +
+        `🧾 Order: ${tg(transactionId)}\n` +
+        `❌ ${tg(toErrorMessage(error))}`
+    );
+}
+
 async function ensureBundleUser(params: {
     app: BundleApp;
     supabase: any;
     email: string;
     name: string;
     siteUrl: string;
+    transactionId: string;
 }) {
-    const { app, supabase, email, name, siteUrl } = params;
+    const { app, supabase, email, name, siteUrl, transactionId } = params;
 
     let userId: string | null = null;
     const { data: createdUser, error: createError } = await supabase.auth.admin.createUser({
@@ -313,6 +349,14 @@ async function ensureBundleUser(params: {
             });
         } catch (error) {
             console.error(`[Bundle Webhook] Failed to send OTP for ${app}:`, error);
+            await notifyAuthEmailFailure({
+                appLabel: app === 'clientdesk' ? 'Client Desk' : 'Fastpik',
+                emailFlow: 'OTP',
+                email,
+                name,
+                transactionId,
+                error,
+            });
         }
     } else {
         userId = createdUser.user.id;
@@ -336,6 +380,14 @@ async function ensureBundleUser(params: {
             });
         } catch (error) {
             console.error(`[Bundle Webhook] Failed to send password reset for ${app}:`, error);
+            await notifyAuthEmailFailure({
+                appLabel: app === 'clientdesk' ? 'Client Desk' : 'Fastpik',
+                emailFlow: 'Password Reset',
+                email,
+                name,
+                transactionId,
+                error,
+            });
         }
     }
 
@@ -415,6 +467,7 @@ async function handleFastpikSubscription(
 
     const amount = (data as any).amount || (data as any).totalAmount || (data as any).gross_amount || (payload as any).amount || 0;
     const transactionId = orderData.id || (data as any).transactionId || (payload as any).id || `TRX-${Date.now()}`;
+    const productName = orderData.productName || orderData.product_name || payload.data?.productName || payload.data?.product_name || 'unknown';
 
     console.log(`[Fastpik Webhook] Email: ${email}, Name: ${name}, Status: ${rawStatus}, Amount: ${amount}`);
 
@@ -436,7 +489,7 @@ async function handleFastpikSubscription(
     let planDurationDays = 0;
     let planTier = 'free';
     let isLifetime = false;
-    const amountNum = Number(amount);
+    const amountNum = parseAmountNumber(amount);
 
     if (amountNum >= 14000 && amountNum <= 16000) {
         planTier = 'pro_monthly';
@@ -454,11 +507,11 @@ async function handleFastpikSubscription(
         console.log(`[Fastpik Webhook] Unknown amount: ${amountNum}`);
         await notifyAlert(
             `<b>⚠️ Fastpik: Unknown Amount</b>\n\n` +
-            `📦 Product: ${(payload.data as any)?.productName || 'unknown'}\n` +
-            `👤 ${name}\n` +
-            `📧 ${email}\n` +
-            `💰 Rp ${amountNum.toLocaleString('id-ID')}\n` +
-            `🧾 Order: ${transactionId}`
+            `📦 Product: ${tg(productName)}\n` +
+            `👤 ${tg(name)}\n` +
+            `📧 ${tg(email)}\n` +
+            `💰 Rp ${formatAmountIdr(amount)}\n` +
+            `🧾 Order: ${tg(transactionId)}`
         );
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
     }
@@ -473,10 +526,8 @@ async function handleFastpikSubscription(
 
     if (createError) {
         // User already exists — find them
-        const { data: { users: allUsers } } = await fastpikSupabase.auth.admin.listUsers({ perPage: 1000 });
-        const found = allUsers?.find(u => u.email?.toLowerCase() === email.toLowerCase());
-        if (found) {
-            userId = found.id;
+        userId = await findUserIdByEmail(fastpikSupabase, email);
+        if (userId) {
             // Send magic link for existing user
             try {
                 await fastpikSupabase.auth.signInWithOtp({
@@ -487,6 +538,14 @@ async function handleFastpikSubscription(
                 });
             } catch (e) {
                 console.error('[Fastpik Webhook] Failed to send OTP:', e);
+                await notifyAuthEmailFailure({
+                    appLabel: 'Fastpik',
+                    emailFlow: 'OTP',
+                    email,
+                    name,
+                    transactionId,
+                    error: e,
+                });
             }
         }
     } else {
@@ -498,6 +557,14 @@ async function handleFastpikSubscription(
             });
         } catch (e) {
             console.error('[Fastpik Webhook] Failed to send password reset:', e);
+            await notifyAuthEmailFailure({
+                appLabel: 'Fastpik',
+                emailFlow: 'Password Reset',
+                email,
+                name,
+                transactionId,
+                error: e,
+            });
         }
     }
 
@@ -535,11 +602,11 @@ async function handleFastpikSubscription(
     // Telegram notification
     await notifyPurchase(
         `<b>Fastpik Purchase!</b>\n\n` +
-        `📦 ${planTier}\n` +
-        `👤 ${name}\n` +
-        `📧 ${email}\n` +
-        `💰 Rp ${amountNum.toLocaleString('id-ID')}\n` +
-        `🔑 Transaction: ${transactionId}`
+        `📦 ${tg(planTier)}\n` +
+        `👤 ${tg(name)}\n` +
+        `📧 ${tg(email)}\n` +
+        `💰 Rp ${formatAmountIdr(amountNum)}\n` +
+        `🔑 Transaction: ${tg(transactionId)}`
     );
 
     console.log(`[Fastpik Webhook] ✅ Subscription activated: ${email} -> ${planTier}`);
@@ -610,13 +677,13 @@ async function handleClientDeskSubscription(
         console.log(`[Client Desk Webhook] Plan not detected from amount: ${amountNum}`);
         await notifyAlert(
             `<b>⚠️ Client Desk: Unknown Amount</b>\n\n` +
-            `📦 Product: ${productName}\n` +
-            `👤 ${name}\n` +
-            `📧 ${email}\n` +
-            `💰 Rp ${Number.isFinite(amountNum) ? amountNum.toLocaleString('id-ID') : String(amount)}\n` +
+            `📦 Product: ${tg(productName)}\n` +
+            `👤 ${tg(name)}\n` +
+            `📧 ${tg(email)}\n` +
+            `💰 Rp ${formatAmountIdr(amount)}\n` +
             `🔎 Detection: amount-only\n` +
             `📝 Rule: min 50% of base price, max base + tolerance\n` +
-            `🧾 Order: ${transactionId}`
+            `🧾 Order: ${tg(transactionId)}`
         );
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
     }
@@ -626,15 +693,15 @@ async function handleClientDeskSubscription(
         console.log(`[Client Desk Webhook] Amount outside allowed range for ${planTier}: ${amountNum}`);
         await notifyAlert(
             `<b>⚠️ Client Desk: Unknown Amount</b>\n\n` +
-            `📦 Product: ${productName}\n` +
-            `👤 ${name}\n` +
-            `📧 ${email}\n` +
-            `💰 Amount: Rp ${Number.isFinite(amountNum) ? amountNum.toLocaleString('id-ID') : String(amount)}\n` +
-            `🔎 Plan from amount: ${planTier}\n` +
+            `📦 Product: ${tg(productName)}\n` +
+            `👤 ${tg(name)}\n` +
+            `📧 ${tg(email)}\n` +
+            `💰 Amount: Rp ${formatAmountIdr(amount)}\n` +
+            `🔎 Plan from amount: ${tg(planTier)}\n` +
             `💵 Base: Rp ${priceValidation.basePrice.toLocaleString('id-ID')}\n` +
             `📉 Min (50%): Rp ${priceValidation.minAllowed.toLocaleString('id-ID')}\n` +
             `📈 Max: Rp ${priceValidation.maxAllowed.toLocaleString('id-ID')}\n` +
-            `🧾 Order: ${transactionId}`
+            `🧾 Order: ${tg(transactionId)}`
         );
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
     }
@@ -652,10 +719,8 @@ async function handleClientDeskSubscription(
 
     if (createError) {
         // User already exists — find them
-        const { data: { users: allUsers } } = await clientdeskSupabase.auth.admin.listUsers({ perPage: 1000 });
-        const found = allUsers?.find(u => u.email?.toLowerCase() === email.toLowerCase());
-        if (found) {
-            userId = found.id;
+        userId = await findUserIdByEmail(clientdeskSupabase, email);
+        if (userId) {
             // Send magic link for existing user
             try {
                 await clientdeskSupabase.auth.signInWithOtp({
@@ -666,6 +731,14 @@ async function handleClientDeskSubscription(
                 });
             } catch (e) {
                 console.error('[Client Desk Webhook] Failed to send OTP:', e);
+                await notifyAuthEmailFailure({
+                    appLabel: 'Client Desk',
+                    emailFlow: 'OTP',
+                    email,
+                    name,
+                    transactionId,
+                    error: e,
+                });
             }
         }
     } else {
@@ -682,6 +755,14 @@ async function handleClientDeskSubscription(
             });
         } catch (e) {
             console.error('[Client Desk Webhook] Failed to send password reset:', e);
+            await notifyAuthEmailFailure({
+                appLabel: 'Client Desk',
+                emailFlow: 'Password Reset',
+                email,
+                name,
+                transactionId,
+                error: e,
+            });
         }
     }
 
@@ -719,11 +800,11 @@ async function handleClientDeskSubscription(
     // Telegram notification
     await notifyPurchase(
         `<b>Client Desk Purchase!</b>\n\n` +
-        `📦 ${planTier}\n` +
-        `👤 ${name}\n` +
-        `📧 ${email}\n` +
-        `💰 Rp ${amountNum.toLocaleString('id-ID')}\n` +
-        `🔑 Transaction: ${transactionId}`
+        `📦 ${tg(planTier)}\n` +
+        `👤 ${tg(name)}\n` +
+        `📧 ${tg(email)}\n` +
+        `💰 Rp ${formatAmountIdr(amountNum)}\n` +
+        `🔑 Transaction: ${tg(transactionId)}`
     );
 
     console.log(`[Client Desk Webhook] ✅ Subscription activated: ${email} -> ${planTier}`);
@@ -786,12 +867,12 @@ async function handleBundleSubscription(
     if (!planTier) {
         await notifyAlert(
             `<b>⚠️ Bundle: Unknown Amount</b>\n\n` +
-            `📦 Product: ${productName}\n` +
-            `👤 ${name}\n` +
-            `📧 ${email}\n` +
-            `💰 Amount: Rp ${Number.isFinite(amountNum) ? amountNum.toLocaleString('id-ID') : String(amount)}\n` +
+            `📦 Product: ${tg(productName)}\n` +
+            `👤 ${tg(name)}\n` +
+            `📧 ${tg(email)}\n` +
+            `💰 Amount: Rp ${formatAmountIdr(amount)}\n` +
             `📝 Expected: 49k / 125k / 399k / 749k (±${BUNDLE_AMOUNT_TOLERANCE.toLocaleString('id-ID')})\n` +
-            `🧾 Order: ${transactionId}`
+            `🧾 Order: ${tg(transactionId)}`
         );
         return jsonResponse('Success', `Unknown bundle amount: ${amountNum}`);
     }
@@ -813,6 +894,7 @@ async function handleBundleSubscription(
             email,
             name,
             siteUrl: CLIENTDESK_SITE_URL,
+            transactionId,
         }),
         ensureBundleUser({
             app: 'fastpik',
@@ -820,6 +902,7 @@ async function handleBundleSubscription(
             email,
             name,
             siteUrl: FASTPIK_SITE_URL,
+            transactionId,
         }),
     ]);
 
@@ -858,11 +941,11 @@ async function handleBundleSubscription(
     await notifyPurchase(
         `<b>Bundle Purchase!</b>\n\n` +
         `📦 Client Desk + Fastpik\n` +
-        `🎯 Tier: ${planTier}\n` +
-        `👤 ${name}\n` +
-        `📧 ${email}\n` +
-        `💰 Rp ${amountNum.toLocaleString('id-ID')}\n` +
-        `🔑 Transaction: ${transactionId}\n` +
+        `🎯 Tier: ${tg(planTier)}\n` +
+        `👤 ${tg(name)}\n` +
+        `📧 ${tg(email)}\n` +
+        `💰 Rp ${formatAmountIdr(amountNum)}\n` +
+        `🔑 Transaction: ${tg(transactionId)}\n` +
         `✅ Client Desk: ${updatedClientDesk ? 'updated' : 'skip'}\n` +
         `✅ Fastpik: ${updatedFastpik ? 'updated' : 'skip'}`
     );
@@ -1016,9 +1099,9 @@ async function sendLicenseEmail(
             console.error(`[License Email] Failed to send to ${email}:`, result.error);
             await notifyAlert(
                 `<b>⚠️ Email Failed</b>\n\n` +
-                `📦 Product: ${product.name}\n` +
-                `📧 Email: ${email}\n` +
-                `❌ Error: ${result.error}`
+                `📦 Product: ${tg(product.name)}\n` +
+                `📧 Email: ${tg(email)}\n` +
+                `❌ Error: ${tg(result.error)}`
             );
             return false;
         }
@@ -1077,9 +1160,9 @@ async function handleLicensePurchase(
     if (reservedLicenses.length < totalLicenses) {
         await notifyAlert(
             `<b>⚠️ LICENSE SHORTAGE</b>\n\n` +
-            `📦 Product: ${product.name}\n` +
-            `🧾 Order: ${orderData.id}\n` +
-            `📧 Customer: ${customerEmail}\n` +
+            `📦 Product: ${tg(product.name)}\n` +
+            `🧾 Order: ${tg(orderData.id)}\n` +
+            `📧 Customer: ${tg(customerEmail)}\n` +
             `📊 Needed: ${totalLicenses}\n` +
             `📉 Available: ${reservedLicenses.length}`
         );
@@ -1119,13 +1202,13 @@ async function handleLicensePurchase(
     );
 
     // Telegram notification
-    const serialList = reservedLicenses.map((l, i) => `  ${i + 1}. <code>${l.serial_key}</code>`).join('\n');
+    const serialList = reservedLicenses.map((l, i) => `  ${i + 1}. <code>${tg(l.serial_key)}</code>`).join('\n');
     await notifyPurchase(
         `<b>New Purchase!</b>\n\n` +
-        `📦 ${product.name}\n` +
-        `👤 ${customerName}\n` +
-        `📧 ${customerEmail}\n` +
-        `${customerInstagram ? `📸 @${customerInstagram}\n` : ''}` +
+        `📦 ${tg(product.name)}\n` +
+        `👤 ${tg(customerName)}\n` +
+        `📧 ${tg(customerEmail)}\n` +
+        `${customerInstagram ? `📸 @${tg(customerInstagram)}\n` : ''}` +
         `🔑 ${reservedLicenses.length} license(s)\n\n` +
         `<b>Serial Keys:</b>\n${serialList}\n` +
         `${includesPlugin || isBundle ? '\n🔌 + Plugin' : ''}`
@@ -1218,9 +1301,9 @@ export async function POST(request: NextRequest) {
         console.log(`[Mayar Webhook] ❓ Unknown product: ${productName}`);
         await notifyAlert(
             `<b>⚠️ Unknown Product in Webhook</b>\n\n` +
-            `📦 Product: ${productName}\n` +
-            `📧 Email: ${customerEmail}\n` +
-            `🧾 Order: ${orderData.id}`
+            `📦 Product: ${tg(productName)}\n` +
+            `📧 Email: ${tg(customerEmail)}\n` +
+            `🧾 Order: ${tg(orderData.id)}`
         );
 
         return jsonResponse('Success', `Product not managed: ${productName}`);
