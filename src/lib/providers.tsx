@@ -17,11 +17,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const [theme, setTheme] = useState<Theme>('light');
 
     useEffect(() => {
-        const saved = localStorage.getItem('rl-theme') as Theme | null;
+        const saved = localStorage.getItem('rl-theme');
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const initial = saved || (prefersDark ? 'dark' : 'light');
-        setTheme(initial);
+        const initial = saved === 'light' || saved === 'dark' ? saved : prefersDark ? 'dark' : 'light';
+
         document.documentElement.setAttribute('data-theme', initial);
+        const timeout = window.setTimeout(() => setTheme(initial), 0);
+
+        return () => window.clearTimeout(timeout);
     }, []);
 
     const toggleTheme = () => {
@@ -280,6 +283,11 @@ const translations = {
         'vendor.create': 'Buat',
         'vendor.created': 'Vendor berhasil dibuat!',
         'vendor.updated': 'Vendor berhasil diperbarui!',
+        'vendor.delete': 'Hapus',
+        'vendor.deleteTitle': 'Hapus Vendor',
+        'vendor.deleteDesc': 'Yakin ingin menghapus vendor ini secara permanen?',
+        'vendor.deleted': 'Vendor berhasil dihapus!',
+        'vendor.deleteFailed': 'Gagal menghapus vendor',
         'vendor.apiKeyNeeded': 'Masukkan API Key untuk mengelola vendor',
     },
     en: {
@@ -520,6 +528,11 @@ const translations = {
         'vendor.create': 'Create',
         'vendor.created': 'Vendor created successfully!',
         'vendor.updated': 'Vendor updated successfully!',
+        'vendor.delete': 'Delete',
+        'vendor.deleteTitle': 'Delete Vendor',
+        'vendor.deleteDesc': 'Are you sure you want to permanently delete this vendor?',
+        'vendor.deleted': 'Vendor deleted successfully!',
+        'vendor.deleteFailed': 'Failed to delete vendor',
         'vendor.apiKeyNeeded': 'Enter API Key to manage vendors',
     },
 } as const;
@@ -542,8 +555,11 @@ export function LangProvider({ children }: { children: ReactNode }) {
     const [lang, setLang] = useState<Lang>('id');
 
     useEffect(() => {
-        const saved = localStorage.getItem('rl-lang') as Lang | null;
-        if (saved) setLang(saved);
+        const saved = localStorage.getItem('rl-lang');
+        if (saved !== 'id' && saved !== 'en') return;
+
+        const timeout = window.setTimeout(() => setLang(saved), 0);
+        return () => window.clearTimeout(timeout);
     }, []);
 
     const toggleLang = () => {

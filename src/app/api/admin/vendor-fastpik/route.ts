@@ -33,7 +33,8 @@ async function proxyToFastpik(request: NextRequest, method: string) {
         }
 
         const res = await fetch(`${FASTPIK_API}/api/admin/tenants`, init);
-        const data = await res.json();
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : { success: res.ok };
 
         return NextResponse.json(data, { status: res.status });
     } catch (error) {
@@ -58,4 +59,9 @@ export async function POST(request: NextRequest) {
 // PUT: Update existing tenant
 export async function PUT(request: NextRequest) {
     return proxyToFastpik(request, 'PUT');
+}
+
+// DELETE: Delete existing tenant
+export async function DELETE(request: NextRequest) {
+    return proxyToFastpik(request, 'DELETE');
 }

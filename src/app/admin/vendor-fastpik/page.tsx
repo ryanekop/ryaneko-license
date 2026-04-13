@@ -41,6 +41,11 @@ const EditIcon = () => (
         <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
     </svg>
 );
+const TrashIcon = () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" />
+    </svg>
+);
 const GlobeIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" />
@@ -86,6 +91,10 @@ export default function VendorFastpikPage() {
     const [formFooter, setFormFooter] = useState('');
     const [formLoading, setFormLoading] = useState(false);
     const [formResult, setFormResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [deleteTenant, setDeleteTenant] = useState<TenantData | null>(null);
+    const [deleteLoading, setDeleteLoading] = useState(false);
+    const [deleteError, setDeleteError] = useState('');
+    const [deleteSuccess, setDeleteSuccess] = useState('');
 
 
 
@@ -117,6 +126,17 @@ export default function VendorFastpikPage() {
         setFormFooter('');
         setFormResult(null);
         setShowForm(true);
+    };
+
+    const openDelete = (tenant: TenantData) => {
+        setDeleteTenant(tenant);
+        setDeleteError('');
+    };
+
+    const closeDelete = () => {
+        if (deleteLoading) return;
+        setDeleteTenant(null);
+        setDeleteError('');
     };
 
     const openEdit = (tenant: TenantData) => {
@@ -180,6 +200,34 @@ export default function VendorFastpikPage() {
         }
     };
 
+    const handleDelete = async () => {
+        if (!deleteTenant) return;
+        setDeleteLoading(true);
+        setDeleteError('');
+        setDeleteSuccess('');
+        try {
+            const res = await fetch('/api/admin/vendor-fastpik', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: deleteTenant.id }),
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                setDeleteError(data.error || data.message || t('vendor.deleteFailed'));
+                return;
+            }
+
+            setDeleteTenant(null);
+            setDeleteSuccess(t('vendor.deleted'));
+            fetchTenants();
+        } catch {
+            setDeleteError('Connection error');
+        } finally {
+            setDeleteLoading(false);
+        }
+    };
+
     const previewLogoUrl = resolveTenantAssetUrl(
         formLogoUrl,
         formDomain || editingTenant?.domain || null
@@ -223,6 +271,12 @@ export default function VendorFastpikPage() {
             {error && (
                 <div className="text-danger text-sm bg-danger/5 border border-danger/20 rounded-lg px-4 py-3 animate-fade-in">
                     {error}
+                </div>
+            )}
+
+            {deleteSuccess && (
+                <div className="text-emerald-600 dark:text-emerald-400 text-sm bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-4 py-3 animate-fade-in">
+                    {deleteSuccess}
                 </div>
             )}
 
@@ -298,6 +352,12 @@ export default function VendorFastpikPage() {
                                         }`}
                                 >
                                     {tenant.is_active ? t('vendor.deactivate') : t('vendor.activate')}
+                                </button>
+                                <button
+                                    onClick={() => openDelete(tenant)}
+                                    className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-red-700 transition-all active:scale-95 flex items-center justify-center gap-1"
+                                >
+                                    <TrashIcon /> {t('vendor.delete')}
                                 </button>
                             </div>
                             </div>
@@ -430,6 +490,50 @@ export default function VendorFastpikPage() {
                         </button>
                     </div>
                 </form>
+            </Dialog>
+
+            {/* Delete Dialog */}
+            <Dialog open={!!deleteTenant} onClose={closeDelete}>
+                <h3 className="text-lg font-semibold text-danger mb-2">{t('vendor.deleteTitle')}</h3>
+                <p className="text-sm text-fg-muted mb-4">
+                    {t('vendor.deleteDesc')}
+                    {deleteTenant && (
+                        <span className="block mt-2 text-fg font-medium">
+                            {deleteTenant.name} (@{deleteTenant.slug})
+                        </span>
+                    )}
+                    {deleteTenant?.domain && (
+                        <span className="block mt-1 text-xs text-fg-muted">
+                            {deleteTenant.domain}
+                        </span>
+                    )}
+                </p>
+
+                {deleteError && (
+                    <div className="mb-4 px-4 py-2.5 rounded-lg text-sm bg-danger/10 text-danger animate-fade-in">
+                        {deleteError}
+                    </div>
+                )}
+
+                <div className="flex justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={closeDelete}
+                        disabled={deleteLoading}
+                        className="px-4 py-2 bg-bg border border-border rounded-lg text-sm text-fg cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 disabled:opacity-60"
+                    >
+                        {t('dialog.cancel')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleDelete}
+                        disabled={deleteLoading}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold cursor-pointer hover:bg-red-700 transition-all active:scale-95 disabled:opacity-60 flex items-center gap-2"
+                    >
+                        {deleteLoading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                        {t('vendor.delete')}
+                    </button>
+                </div>
             </Dialog>
         </div>
     );
