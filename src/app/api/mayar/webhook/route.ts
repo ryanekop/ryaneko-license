@@ -104,6 +104,15 @@ const CLIENT_DESK_PLAN_PRICES: Record<ClientDeskPlanTier, number> = {
 const CLIENT_DESK_MIN_PRICE_RATIO = 0.5;
 const CLIENT_DESK_AMOUNT_TOLERANCE = 1000;
 
+const FASTPIK_TIER_PRICE_POINTS: Record<ClientDeskPlanTier, number[]> = {
+    pro_monthly: [15000],
+    pro_quarterly: [39000],
+    pro_yearly: [109650, 129000],
+    lifetime: [349000],
+};
+
+const FASTPIK_AMOUNT_TOLERANCE = 1000;
+
 const BUNDLE_PLAN_PRICES: Record<ClientDeskPlanTier, number> = {
     pro_monthly: 49000,
     pro_quarterly: 125000,
@@ -217,6 +226,28 @@ function detectBundleTierFromAmount(amount: number): ClientDeskPlanTier | null {
             distance: Math.abs(amount - BUNDLE_PLAN_PRICES[tier]),
         }))
         .filter((candidate) => candidate.distance <= BUNDLE_AMOUNT_TOLERANCE);
+
+    if (candidates.length === 0) {
+        return null;
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    return candidates[0].tier;
+}
+
+function detectFastpikPlanFromAmount(amount: number): ClientDeskPlanTier | null {
+    if (!Number.isFinite(amount)) return null;
+
+    const tiers: ClientDeskPlanTier[] = ['pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
+    const candidates = tiers
+        .flatMap((tier) =>
+            FASTPIK_TIER_PRICE_POINTS[tier].map((pricePoint) => ({
+                tier,
+                pricePoint,
+                distance: Math.abs(amount - pricePoint),
+            }))
+        )
+        .filter((candidate) => candidate.distance <= FASTPIK_AMOUNT_TOLERANCE);
 
     if (candidates.length === 0) {
         return null;
@@ -485,25 +516,10 @@ async function handleFastpikSubscription(
         return jsonResponse('Success', `Ignored status: ${rawStatus}`);
     }
 
-    // Determine plan from amount
-    let planDurationDays = 0;
-    let planTier = 'free';
-    let isLifetime = false;
     const amountNum = parseAmountNumber(amount);
+    const planTier = detectFastpikPlanFromAmount(amountNum);
 
-    if (amountNum >= 14000 && amountNum <= 16000) {
-        planTier = 'pro_monthly';
-        planDurationDays = 30;
-    } else if (amountNum >= 38000 && amountNum <= 40000) {
-        planTier = 'pro_quarterly';
-        planDurationDays = 90;
-    } else if (amountNum >= 128000 && amountNum <= 130000) {
-        planTier = 'pro_yearly';
-        planDurationDays = 365;
-    } else if (amountNum >= 348000 && amountNum <= 350000) {
-        planTier = 'lifetime';
-        isLifetime = true;
-    } else {
+    if (!planTier) {
         console.log(`[Fastpik Webhook] Unknown amount: ${amountNum}`);
         await notifyAlert(
             `<b>⚠️ Fastpik: Unknown Amount</b>\n\n` +
@@ -511,10 +527,14 @@ async function handleFastpikSubscription(
             `👤 ${tg(name)}\n` +
             `📧 ${tg(email)}\n` +
             `💰 Rp ${formatAmountIdr(amount)}\n` +
+            `📝 Expected: 15k / 39k / 109.650 / 129k / 349k (±${FASTPIK_AMOUNT_TOLERANCE.toLocaleString('id-ID')})\n` +
             `🧾 Order: ${tg(transactionId)}`
         );
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
     }
+
+    const isLifetime = planTier === 'lifetime';
+    const planDurationDays = isLifetime ? 0 : getClientDeskPlanDurationDays(planTier);
 
     // Find or Create User in Fastpik Supabase
     let userId: string | undefined;
