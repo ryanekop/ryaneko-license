@@ -9,6 +9,23 @@ import { NextRequest, NextResponse } from 'next/server';
 const FASTPIK_API = process.env.FASTPIK_API_URL || 'https://fastpik.ryanekoapp.web.id';
 const FASTPIK_KEY = process.env.FASTPIK_ADMIN_API_KEY || '';
 
+function parseUpstreamPayload(text: string, status: number, ok: boolean) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+        return ok
+            ? { success: true }
+            : { success: false, error: `FastPik API request failed with status ${status}` };
+    }
+
+    try {
+        return JSON.parse(trimmed);
+    } catch {
+        return ok
+            ? { success: true, data: trimmed }
+            : { success: false, error: trimmed };
+    }
+}
+
 async function proxyToFastpik(request: NextRequest, method: string) {
     if (!FASTPIK_KEY) {
         return NextResponse.json(
@@ -34,7 +51,7 @@ async function proxyToFastpik(request: NextRequest, method: string) {
 
         const res = await fetch(`${FASTPIK_API}/api/admin/tenants`, init);
         const text = await res.text();
-        const data = text ? JSON.parse(text) : { success: res.ok };
+        const data = parseUpstreamPayload(text, res.status, res.ok);
 
         return NextResponse.json(data, { status: res.status });
     } catch (error) {

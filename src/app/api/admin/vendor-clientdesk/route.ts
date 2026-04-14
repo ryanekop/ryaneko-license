@@ -8,6 +8,23 @@ import { NextRequest, NextResponse } from 'next/server';
 const CLIENTDESK_API = process.env.CLIENTDESK_API_URL || 'https://clientdesk.ryanekoapp.web.id';
 const CLIENTDESK_KEY = process.env.CLIENTDESK_ADMIN_API_KEY || '';
 
+function parseUpstreamPayload(text: string, status: number, ok: boolean) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+        return ok
+            ? { success: true }
+            : { success: false, error: `Client Desk API request failed with status ${status}` };
+    }
+
+    try {
+        return JSON.parse(trimmed);
+    } catch {
+        return ok
+            ? { success: true, data: trimmed }
+            : { success: false, error: trimmed };
+    }
+}
+
 async function proxyToClientDesk(request: NextRequest, method: string) {
     if (!CLIENTDESK_KEY) {
         return NextResponse.json(
@@ -33,7 +50,7 @@ async function proxyToClientDesk(request: NextRequest, method: string) {
 
         const res = await fetch(`${CLIENTDESK_API}/api/admin/tenants`, init);
         const text = await res.text();
-        const data = text ? JSON.parse(text) : { success: res.ok };
+        const data = parseUpstreamPayload(text, res.status, res.ok);
 
         return NextResponse.json(data, { status: res.status });
     } catch (error) {

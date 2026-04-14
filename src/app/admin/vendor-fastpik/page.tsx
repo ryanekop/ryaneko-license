@@ -57,6 +57,16 @@ function formatDate(dateString: string | null) {
     return new Date(dateString).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function formatDeleteSuccessMessage(lang: 'id' | 'en', baseMessage: string, unassignedAccounts?: number) {
+    if (!Number.isFinite(unassignedAccounts) || !unassignedAccounts || unassignedAccounts <= 0) {
+        return baseMessage;
+    }
+
+    return lang === 'id'
+        ? `${baseMessage} ${unassignedAccounts} akun dilepas dari tenant.`
+        : `${baseMessage} ${unassignedAccounts} account${unassignedAccounts === 1 ? '' : 's'} unassigned from the tenant.`;
+}
+
 // Portal Dialog component
 function Dialog({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
     if (!open) return null;
@@ -74,7 +84,7 @@ function Dialog({ open, onClose, children }: { open: boolean; onClose: () => voi
 
 
 export default function VendorFastpikPage() {
-    const { t } = useLang();
+    const { t, lang } = useLang();
     const [tenants, setTenants] = useState<TenantData[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -219,7 +229,7 @@ export default function VendorFastpikPage() {
             }
 
             setDeleteTenant(null);
-            setDeleteSuccess(t('vendor.deleted'));
+            setDeleteSuccess(formatDeleteSuccessMessage(lang, t('vendor.deleted'), data.unassignedAccounts));
             fetchTenants();
         } catch {
             setDeleteError('Connection error');
