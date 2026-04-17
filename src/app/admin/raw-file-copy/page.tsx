@@ -10,6 +10,7 @@ const PLATFORMS = [
     { value: 'Windows', label: 'Windows' },
     { value: 'Mac', label: 'Mac' },
     { value: 'Mac (Monterey)', label: 'Mac (Monterey)' },
+    { value: 'Android', label: 'Android' },
 ];
 
 export default function RawFileCopyPage() {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { generateDeviceHash, verifyHash } from '@/lib/crypto';
+import { generateDeviceHash } from '@/lib/crypto';
 import { notifyActivation, notifyAlert } from '@/lib/telegram';
 import { createRateLimiter, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 import type { ActivationRequest, ActivationResponse, License } from '@/lib/types';
@@ -10,7 +10,7 @@ const activateLimiter = createRateLimiter({ limit: 10, windowMs: 60_000 });
 
 /**
  * Normalize device_type from OS-reported values to consistent display format.
- * e.g. "macOS" → "Mac", "macOS-Monterey" → "Mac (Monterey)", "Windows" → "Windows"
+ * e.g. "macOS" → "Mac", "macOS-Monterey" → "Mac (Monterey)", "Windows" → "Windows", "Android 14" → "Android"
  */
 function normalizeDeviceType(raw: string): string {
     if (!raw) return raw;
@@ -35,6 +35,11 @@ function normalizeDeviceType(raw: string): string {
     // Windows stays as-is
     if (lower.startsWith('windows')) {
         return 'Windows';
+    }
+
+    // Android variants are grouped into one admin filter category.
+    if (lower.startsWith('android')) {
+        return 'Android';
     }
 
     return raw;

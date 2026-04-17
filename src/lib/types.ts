@@ -9,7 +9,13 @@ export type ProductSlug =
 
 export type LicenseStatus = 'available' | 'used' | 'revoked';
 
-export type DeviceType = 'macOS' | 'macOS-Monterey' | 'Windows';
+export type DeviceType =
+    | 'Mac'
+    | 'Mac (Monterey)'
+    | 'macOS'
+    | 'macOS-Monterey'
+    | 'Windows'
+    | 'Android';
 
 export interface Product {
     id: string;

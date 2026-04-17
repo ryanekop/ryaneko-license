@@ -11,8 +11,7 @@ import type {
     MayarOrderData,
     MayarCustomField,
     Product,
-    License,
-    DeviceType
+    License
 } from '@/lib/types';
 
 // Response helper
@@ -1012,29 +1011,6 @@ function parseAddons(addons: unknown[]): { extraLicenses: number; includesPlugin
     }
 
     return { extraLicenses, includesPlugin };
-}
-
-// Detect device type from OS version (for RAW File Copy Tool)
-function detectDeviceType(platform: string, osVersion: string): DeviceType {
-    if (platform.toLowerCase().includes('windows')) {
-        return 'Windows';
-    }
-
-    // Check for Monterey (macOS 12.x)
-    if (osVersion && osVersion.toLowerCase().includes('monterey')) {
-        return 'macOS-Monterey';
-    }
-
-    // Check version number for Monterey
-    const versionMatch = osVersion?.match(/(\d+)\.(\d+)/);
-    if (versionMatch) {
-        const majorVersion = parseInt(versionMatch[1], 10);
-        if (majorVersion === 12) {
-            return 'macOS-Monterey';
-        }
-    }
-
-    return 'macOS';
 }
 
 // Reserve licenses for a purchase
