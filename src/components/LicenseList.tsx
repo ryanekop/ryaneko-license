@@ -84,6 +84,9 @@ const Icons = {
     warning: (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
     ),
+    ban: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="m4.9 4.9 14.2 14.2" /></svg>
+    ),
     inbox: (
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
     ),
@@ -117,10 +120,7 @@ function Dialog({
     onClose: () => void;
     children: React.ReactNode;
 }) {
-    const [mounted, setMounted] = useState(false);
-    useEffect(() => { setMounted(true); }, []);
-
-    if (!open || !mounted) return null;
+    if (!open || typeof document === 'undefined') return null;
 
     return createPortal(
         <>
@@ -152,6 +152,8 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
 
     const [changeDialog, setChangeDialog] = useState<License | null>(null);
     const [resetDialog, setResetDialog] = useState<License | null>(null);
+    const [revokeDialog, setRevokeDialog] = useState<License | null>(null);
+    const [unrevokeDialog, setUnrevokeDialog] = useState<License | null>(null);
     const [deleteDialog, setDeleteDialog] = useState<License | null>(null);
     const [editTableDialog, setEditTableDialog] = useState<License | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
@@ -237,6 +239,38 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                 method: 'DELETE',
             });
             setDeleteDialog(null);
+            fetchLicenses();
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleRevoke = async () => {
+        if (!revokeDialog) return;
+        setActionLoading(true);
+        try {
+            await fetch('/api/admin/licenses', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: revokeDialog.id, action: 'revoke' }),
+            });
+            setRevokeDialog(null);
+            fetchLicenses();
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleUnrevoke = async () => {
+        if (!unrevokeDialog) return;
+        setActionLoading(true);
+        try {
+            await fetch('/api/admin/licenses', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: unrevokeDialog.id, action: 'unrevoke' }),
+            });
+            setUnrevokeDialog(null);
             fetchLicenses();
         } finally {
             setActionLoading(false);
@@ -457,6 +491,11 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                             <button onClick={() => openEditTable(license)} className="inline-flex items-center justify-center w-8 h-8 bg-indigo-500 text-white rounded-lg cursor-pointer hover:bg-indigo-600 hover:shadow-md transition-all active:scale-95" title={t('action.editTable')}>{Icons.editTable}</button>
                                             <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="inline-flex items-center justify-center w-8 h-8 bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 hover:shadow-md transition-all active:scale-95" title={t('action.editDevice')}>{Icons.edit}</button>
                                             <button onClick={() => setResetDialog(license)} className="inline-flex items-center justify-center w-8 h-8 bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 hover:shadow-md transition-all active:scale-95" title={t('action.reset')}>{Icons.reset}</button>
+                                            {license.status === 'revoked' ? (
+                                                <button onClick={() => setUnrevokeDialog(license)} className="inline-flex items-center justify-center w-8 h-8 bg-emerald-600 text-white rounded-lg cursor-pointer hover:bg-emerald-700 hover:shadow-md transition-all active:scale-95" title={t('action.unrevoke')}>{Icons.reset}</button>
+                                            ) : (
+                                                <button onClick={() => setRevokeDialog(license)} className="inline-flex items-center justify-center w-8 h-8 bg-red-700 text-white rounded-lg cursor-pointer hover:bg-red-800 hover:shadow-md transition-all active:scale-95" title={t('action.revoke')}>{Icons.ban}</button>
+                                            )}
                                             <button onClick={() => setDeleteDialog(license)} className="inline-flex items-center justify-center w-8 h-8 bg-danger text-white rounded-lg cursor-pointer hover:bg-red-600 hover:shadow-md transition-all active:scale-95" title={t('action.delete')}>{Icons.trash}</button>
                                         </div>
                                     </td>
@@ -512,6 +551,11 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                     <button onClick={() => openEditTable(license)} className="flex items-center justify-center w-8 h-8 bg-indigo-500 text-white rounded-lg cursor-pointer hover:bg-indigo-600 transition-all active:scale-95" title={t('action.editTable')}>{Icons.editTable}</button>
                                     <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="flex items-center justify-center w-8 h-8 bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 transition-all active:scale-95" title={t('action.editDevice')}>{Icons.edit}</button>
                                     <button onClick={() => setResetDialog(license)} className="flex items-center justify-center w-8 h-8 bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 transition-all active:scale-95" title={t('action.reset')}>{Icons.reset}</button>
+                                    {license.status === 'revoked' ? (
+                                        <button onClick={() => setUnrevokeDialog(license)} className="flex items-center justify-center w-8 h-8 bg-emerald-600 text-white rounded-lg cursor-pointer hover:bg-emerald-700 transition-all active:scale-95" title={t('action.unrevoke')}>{Icons.reset}</button>
+                                    ) : (
+                                        <button onClick={() => setRevokeDialog(license)} className="flex items-center justify-center w-8 h-8 bg-red-700 text-white rounded-lg cursor-pointer hover:bg-red-800 transition-all active:scale-95" title={t('action.revoke')}>{Icons.ban}</button>
+                                    )}
                                     <button onClick={() => setDeleteDialog(license)} className="flex items-center justify-center w-8 h-8 bg-danger text-white rounded-lg cursor-pointer hover:bg-red-600 transition-all active:scale-95" title={t('action.delete')}>{Icons.trash}</button>
                                 </div>
                             </div>
@@ -601,6 +645,56 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                         <button onClick={() => setResetDialog(null)} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
                         <button onClick={handleReset} disabled={actionLoading} className="flex-1 py-2.5 bg-blue-500 text-white rounded-xl cursor-pointer hover:bg-blue-600 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
                             {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('dialog.confirm')}
+                        </button>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* Revoke Dialog */}
+            <Dialog open={!!revokeDialog} onClose={() => setRevokeDialog(null)}>
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 bg-red-700/10 text-red-700 dark:text-red-400 rounded-lg shrink-0">{Icons.ban}</div>
+                        <div>
+                            <h3 className="text-base sm:text-lg font-semibold text-red-700 dark:text-red-400">{t('dialog.revokeTitle')}</h3>
+                            <p className="text-fg-muted text-sm mt-0.5">{t('dialog.revokeDesc')}</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 text-sm space-y-1">
+                        <div className="text-fg-muted">{t('dialog.resetSerial')}: <span className="text-fg font-mono text-xs sm:text-sm break-all">{revokeDialog?.serial_key}</span></div>
+                        <div className="text-fg-muted">{t('dialog.resetUser')}: <span className="text-fg">{revokeDialog?.customer_name || '-'}</span></div>
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                        <button onClick={() => setRevokeDialog(null)} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
+                        <button onClick={handleRevoke} disabled={actionLoading} className="flex-1 py-2.5 bg-red-700 text-white rounded-xl cursor-pointer hover:bg-red-800 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
+                            {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('action.revoke')}
+                        </button>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* Unrevoke Dialog */}
+            <Dialog open={!!unrevokeDialog} onClose={() => setUnrevokeDialog(null)}>
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 rounded-lg shrink-0">{Icons.reset}</div>
+                        <div>
+                            <h3 className="text-base sm:text-lg font-semibold text-emerald-600 dark:text-emerald-400">{t('dialog.unrevokeTitle')}</h3>
+                            <p className="text-fg-muted text-sm mt-0.5">{t('dialog.unrevokeDesc')}</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 text-sm space-y-1">
+                        <div className="text-fg-muted">{t('dialog.resetSerial')}: <span className="text-fg font-mono text-xs sm:text-sm break-all">{unrevokeDialog?.serial_key}</span></div>
+                        <div className="text-fg-muted">{t('dialog.resetUser')}: <span className="text-fg">{unrevokeDialog?.customer_name || '-'}</span></div>
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                        <button onClick={() => setUnrevokeDialog(null)} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
+                        <button onClick={handleUnrevoke} disabled={actionLoading} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl cursor-pointer hover:bg-emerald-700 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
+                            {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('action.unrevoke')}
                         </button>
                     </div>
                 </div>

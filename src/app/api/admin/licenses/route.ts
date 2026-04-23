@@ -134,6 +134,20 @@ export async function PATCH(request: NextRequest) {
             };
         }
 
+        // Revoke action: block future activation/verification but keep audit details.
+        if (action === 'revoke') {
+            finalUpdate = {
+                status: 'revoked',
+            };
+        }
+
+        // Unrevoke action: restore validation on the existing device.
+        if (action === 'unrevoke') {
+            finalUpdate = {
+                status: 'used',
+            };
+        }
+
         const { data, error } = await supabaseAdmin
             .from('licenses')
             .update(finalUpdate)
@@ -143,6 +157,21 @@ export async function PATCH(request: NextRequest) {
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        if (action === 'revoke' || action === 'unrevoke') {
+            const { error: logError } = await supabaseAdmin.from('activations').insert({
+                license_id: data.id,
+                action: 'revoke',
+                device_id: data.device_id,
+                device_type: data.device_type,
+                success: true,
+                error_message: action === 'unrevoke' ? 'License unrevoked' : null,
+            });
+
+            if (logError) {
+                console.error(`Failed to log ${action} action:`, logError);
+            }
         }
 
         return NextResponse.json(data);
@@ -161,13 +190,7 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'Missing license ID' }, { status: 400 });
         }
 
-        // Delete related activations
-        await supabaseAdmin
-            .from('activations')
-            .delete()
-            .eq('license_id', id);
-
-        // Clear info instead of deleting the serial
+        // Clear info instead of deleting the serial or audit history.
         const { data, error } = await supabaseAdmin
             .from('licenses')
             .update({
