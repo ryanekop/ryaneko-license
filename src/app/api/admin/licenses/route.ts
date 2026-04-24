@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { escapeTelegramHtml, notifyAlert } from '@/lib/telegram';
+import type { License } from '@/lib/types';
+
+const tg = (value: unknown) => escapeTelegramHtml(value);
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -152,7 +156,7 @@ export async function PATCH(request: NextRequest) {
             .from('licenses')
             .update(finalUpdate)
             .eq('id', id)
-            .select()
+            .select('*, product:products(*)')
             .single();
 
         if (error) {
@@ -172,6 +176,18 @@ export async function PATCH(request: NextRequest) {
             if (logError) {
                 console.error(`Failed to log ${action} action:`, logError);
             }
+
+            const licenseData = data as License;
+            await notifyAlert(
+                `<b>${action === 'unrevoke' ? 'LICENSE UNREVOKED' : 'LICENSE REVOKED'}</b>\n\n` +
+                `🔑 Serial: <code>${tg(licenseData.serial_key)}</code>\n` +
+                `📦 Product: ${tg(licenseData.product?.name || 'Unknown')}\n` +
+                `👤 Name: ${tg(licenseData.customer_name || 'Unknown')}\n` +
+                `📧 Email: ${tg(licenseData.customer_email || '-')}\n` +
+                `💻 Device: ${tg(licenseData.device_type || '-')}\n` +
+                `🖥 Device ID: <code>${tg(licenseData.device_id || '-')}</code>\n` +
+                `🆔 License ID: <code>${tg(licenseData.id)}</code>`
+            );
         }
 
         return NextResponse.json(data);

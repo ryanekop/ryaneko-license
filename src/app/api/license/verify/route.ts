@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { notifyAlert } from '@/lib/telegram';
+import { escapeTelegramHtml, notifyAlert } from '@/lib/telegram';
 import { createRateLimiter, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 import type { VerifyRequest, VerifyResponse, License } from '@/lib/types';
 
 // 30 requests per minute per IP
 const verifyLimiter = createRateLimiter({ limit: 30, windowMs: 60_000 });
+const tg = (value: unknown) => escapeTelegramHtml(value);
 
 export async function POST(request: NextRequest) {
     try {
@@ -48,6 +49,18 @@ export async function POST(request: NextRequest) {
         // Check if revoked
         if (licenseData.status === 'revoked') {
             await logVerification(licenseData.id, device_id, ip, false, 'License revoked');
+
+            await notifyAlert(
+                `<b>🚫 REVOKED LICENSE BLOCKED</b>\n\n` +
+                `⚙️ Action: verify\n` +
+                `🔑 Serial: <code>${tg(serial_key)}</code>\n` +
+                `📦 Product: ${tg(licenseData.product?.name || 'Unknown')}\n` +
+                `👤 Name: ${tg(licenseData.customer_name || 'Unknown')}\n` +
+                `📧 Email: ${tg(licenseData.customer_email || '-')}\n` +
+                `🆕 Attempted Device: <code>${tg(device_id)}</code>\n` +
+                `💻 Registered Device: ${tg(licenseData.device_type || '-')}\n` +
+                `🌐 IP: ${tg(ip)}`
+            );
 
             return NextResponse.json<VerifyResponse>(
                 { valid: false, message: 'License has been revoked' },
