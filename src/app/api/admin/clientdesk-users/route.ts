@@ -1,6 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { User } from '@supabase/supabase-js';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
 import { escapeTelegramHtml, notifyAlert, notifyInfo } from '@/lib/telegram';
+
+type ClientDeskSubscription = {
+    user_id: string;
+    tier: string;
+    status: string;
+    end_date: string | null;
+    trial_end_date: string | null;
+};
+
+type ClientDeskProfile = {
+    id: string;
+    full_name: string | null;
+};
+
+type SubscriptionPatch = {
+    trial_end_date?: string;
+    end_date?: string;
+};
+
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : 'Unknown server error';
+}
 
 // GET - list users
 export async function GET() {
@@ -8,7 +31,7 @@ export async function GET() {
         const supabase = getClientDeskSupabase();
 
         // Get all auth users (paginated)
-        let authUsers: any[] = [];
+        let authUsers: User[] = [];
         let page = 1;
         while (true) {
             const { data: authData, error: authError } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
@@ -23,12 +46,18 @@ export async function GET() {
         const { data: subscriptions } = await supabase.from('subscriptions').select('user_id, tier, status, end_date, trial_end_date');
         const { data: profiles } = await supabase.from('profiles').select('id, full_name');
 
-        const subMap = new Map((subscriptions || []).map((s: any) => [s.user_id, s]));
-        const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+        const subMap = new Map((subscriptions || []).map((s) => {
+            const subscription = s as ClientDeskSubscription;
+            return [subscription.user_id, subscription] as const;
+        }));
+        const profileMap = new Map((profiles || []).map((p) => {
+            const profile = p as ClientDeskProfile;
+            return [profile.id, profile] as const;
+        }));
 
         const formattedUsers = authUsers.map(user => {
-            const subscription = subMap.get(user.id) as any;
-            const profile = profileMap.get(user.id) as any;
+            const subscription = subMap.get(user.id);
+            const profile = profileMap.get(user.id);
             return {
                 id: user.id,
                 email: user.email || 'No Email',
@@ -45,9 +74,9 @@ export async function GET() {
         formattedUsers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
         return NextResponse.json({ success: true, users: formattedUsers });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Client Desk users GET error:', error);
-        return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, message: getErrorMessage(error) }, { status: 500 });
     }
 }
 
@@ -63,11 +92,30 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, message: 'Name and email are required' }, { status: 400 });
         }
 
+        const normalizedEmail = String(email).trim().toLowerCase();
+        const { data: activeBlock, error: blockError } = await supabase
+            .from('auth_email_blocklist')
+            .select('id')
+            .eq('email', normalizedEmail)
+            .eq('is_active', true)
+            .maybeSingle();
+
+        if (blockError) {
+            throw blockError;
+        }
+
+        if (activeBlock) {
+            return NextResponse.json(
+                { success: false, message: 'This Client Desk account is currently unavailable.' },
+                { status: 403 }
+            );
+        }
+
         const parsedTrialDays = Number.parseInt(String(trialDays), 10);
         const normalizedTrialDays = Number.isFinite(parsedTrialDays) && parsedTrialDays > 0 ? parsedTrialDays : 5;
 
         // Invite user by email
-        const { data: authData, error: authError } = await supabase.auth.admin.inviteUserByEmail(email, {
+        const { data: authData, error: authError } = await supabase.auth.admin.inviteUserByEmail(normalizedEmail, {
             data: { full_name: name },
             redirectTo: 'https://clientdesk.ryanekoapp.web.id/id/auth/callback?next=/id/dashboard',
         });
@@ -143,13 +191,14 @@ export async function POST(request: NextRequest) {
             message: 'Invitation sent! User will receive email to set their password.',
             user: { id: authData.user.id, email: authData.user.email, name },
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Client Desk users POST error:', error);
+        const message = getErrorMessage(error);
         await notifyAlert(
             `<b>⚠️ Client Desk Invite Error</b>\n\n` +
-            `❌ ${escapeTelegramHtml(error?.message || 'Unknown server error')}`
+            `❌ ${escapeTelegramHtml(message)}`
         );
-        return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, message }, { status: 500 });
     }
 }
 
@@ -167,9 +216,9 @@ export async function DELETE(request: NextRequest) {
         if (error) throw error;
 
         return NextResponse.json({ success: true, message: 'User deleted successfully' });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Client Desk users DELETE error:', error);
-        return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, message: getErrorMessage(error) }, { status: 500 });
     }
 }
 
@@ -190,8 +239,8 @@ export async function PATCH(request: NextRequest) {
                 .eq('user_id', userId)
                 .single();
 
-            const updateData: Record<string, any> = {};
-            const sub = currentSub as any;
+            const updateData: SubscriptionPatch = {};
+            const sub = currentSub as Pick<ClientDeskSubscription, 'tier' | 'status'> | null;
             if (sub?.status === 'trial' || sub?.tier === 'free') {
                 updateData.trial_end_date = expiryDate;
             } else {
@@ -231,8 +280,8 @@ export async function PATCH(request: NextRequest) {
         }
 
         return NextResponse.json({ success: false, message: 'Invalid action' }, { status: 400 });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Client Desk users PATCH error:', error);
-        return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, message: getErrorMessage(error) }, { status: 500 });
     }
 }

@@ -38,6 +38,16 @@ interface TenantAccountData {
     tenant_name: string | null;
 }
 
+interface BlocklistData {
+    id: string;
+    email: string;
+    reason: string | null;
+    is_active: boolean;
+    suspended_user_id: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
 // SVG Icons
 const ClipboardIcon = () => (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -83,6 +93,16 @@ const SortIcon = () => (
 const UsersIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+);
+const ShieldIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+    </svg>
+);
+const UnlockIcon = () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" />
     </svg>
 );
 
@@ -140,12 +160,17 @@ export default function ClientDeskPage() {
     const { t } = useLang();
     const [users, setUsers] = useState<UserData[]>([]);
     const [tenants, setTenants] = useState<TenantData[]>([]);
+    const [blocklist, setBlocklist] = useState<BlocklistData[]>([]);
     const [loading, setLoading] = useState(false);
+    const [blocklistLoading, setBlocklistLoading] = useState(false);
     const [error, setError] = useState('');
+    const [blocklistError, setBlocklistError] = useState('');
     const [toast, setToast] = useState<{ success: boolean; message: string } | null>(null);
     const [sortAsc, setSortAsc] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [blocklistSearch, setBlocklistSearch] = useState('');
     const [filterTier, setFilterTier] = useState<string>('all');
+    const [activeTab, setActiveTab] = useState<'users' | 'blocklist'>('users');
 
     // Create form
     const [showCreate, setShowCreate] = useState(false);
@@ -165,6 +190,9 @@ export default function ClientDeskPage() {
     const [assignTenantId, setAssignTenantId] = useState('');
     const [assignLoading, setAssignLoading] = useState(false);
     const [assignError, setAssignError] = useState('');
+    const [blockEmail, setBlockEmail] = useState('');
+    const [blockReason, setBlockReason] = useState('');
+    const [blockActionLoading, setBlockActionLoading] = useState<string | null>(null);
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -219,7 +247,32 @@ export default function ClientDeskPage() {
         }
     }, []);
 
+    const fetchBlocklist = useCallback(async () => {
+        setBlocklistLoading(true);
+        setBlocklistError('');
+        try {
+            const params = new URLSearchParams();
+            if (blocklistSearch.trim()) {
+                params.set('search', blocklistSearch.trim());
+            }
+            const res = await fetch(`/api/admin/clientdesk-blocklist${params.toString() ? `?${params.toString()}` : ''}`);
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                setBlocklistError(data.error || 'Failed to fetch blocklist');
+                return;
+            }
+
+            setBlocklist(data.blocklist || []);
+        } catch {
+            setBlocklistError('Connection error');
+        } finally {
+            setBlocklistLoading(false);
+        }
+    }, [blocklistSearch]);
+
     useEffect(() => { fetchUsers(); }, [fetchUsers]);
+    useEffect(() => { fetchBlocklist(); }, [fetchBlocklist]);
 
     useEffect(() => {
         if (!toast) return;
@@ -247,6 +300,87 @@ export default function ClientDeskPage() {
         const db = new Date(b.createdAt).getTime();
         return sortAsc ? da - db : db - da;
     });
+
+    const handleAddBlock = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const email = blockEmail.trim();
+        if (!email) return;
+
+        setBlockActionLoading('add');
+        setBlocklistError('');
+        try {
+            const res = await fetch('/api/admin/clientdesk-blocklist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, reason: blockReason.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                setBlocklistError(data.error || 'Failed to add blocklist entry');
+                return;
+            }
+
+            setToast({ success: true, message: 'Email added to ClientDesk blocklist' });
+            setBlockEmail('');
+            setBlockReason('');
+            await Promise.all([fetchBlocklist(), fetchUsers()]);
+        } catch {
+            setBlocklistError('Connection error');
+        } finally {
+            setBlockActionLoading(null);
+        }
+    };
+
+    const handleToggleBlock = async (block: BlocklistData) => {
+        setBlockActionLoading(block.id);
+        setBlocklistError('');
+        try {
+            const res = await fetch('/api/admin/clientdesk-blocklist', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: block.id, is_active: !block.is_active }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                setBlocklistError(data.error || 'Failed to update blocklist entry');
+                return;
+            }
+
+            setToast({
+                success: true,
+                message: block.is_active ? 'Blocklist entry disabled' : 'Blocklist entry enabled',
+            });
+            await fetchBlocklist();
+        } catch {
+            setBlocklistError('Connection error');
+        } finally {
+            setBlockActionLoading(null);
+        }
+    };
+
+    const handleDeleteBlock = async (block: BlocklistData) => {
+        setBlockActionLoading(block.id);
+        setBlocklistError('');
+        try {
+            const res = await fetch('/api/admin/clientdesk-blocklist', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: block.id }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                setBlocklistError(data.error || 'Failed to delete blocklist entry');
+                return;
+            }
+
+            setToast({ success: true, message: 'Blocklist entry deleted' });
+            await fetchBlocklist();
+        } catch {
+            setBlocklistError('Connection error');
+        } finally {
+            setBlockActionLoading(null);
+        }
+    };
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -399,22 +533,52 @@ export default function ClientDeskPage() {
                         <SortIcon /> {sortAsc ? t('list.sortOldest') : t('list.sortNewest')}
                     </button>
                     <button
-                        onClick={fetchUsers}
-                        disabled={loading}
+                        onClick={() => {
+                            if (activeTab === 'users') {
+                                fetchUsers();
+                            } else {
+                                fetchBlocklist();
+                            }
+                        }}
+                        disabled={activeTab === 'users' ? loading : blocklistLoading}
                         className="px-3 py-2 bg-bg-card border border-border rounded-lg text-xs font-medium text-fg cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
                     >
-                        <RefreshIcon spinning={loading} /> {t('clientdesk.refresh')}
+                        <RefreshIcon spinning={activeTab === 'users' ? loading : blocklistLoading} /> {t('clientdesk.refresh')}
                     </button>
-                    <button
-                        onClick={() => setShowCreate(!showCreate)}
-                        className="px-3 py-2 bg-accent text-accent-fg rounded-lg text-xs font-semibold cursor-pointer hover:opacity-85 transition-all active:scale-95 flex items-center gap-1.5"
-                    >
-                        <PlusIcon /> {t('clientdesk.newUser')}
-                    </button>
+                    {activeTab === 'users' && (
+                        <button
+                            onClick={() => setShowCreate(!showCreate)}
+                            className="px-3 py-2 bg-accent text-accent-fg rounded-lg text-xs font-semibold cursor-pointer hover:opacity-85 transition-all active:scale-95 flex items-center gap-1.5"
+                        >
+                            <PlusIcon /> {t('clientdesk.newUser')}
+                        </button>
+                    )}
                 </div>
             </div>
 
+            {/* Tabs */}
+            <div className="inline-flex rounded-xl border border-border bg-bg-card p-1 shadow-[var(--shadow)]">
+                {[
+                    { key: 'users' as const, label: 'Users', icon: <UsersIcon /> },
+                    { key: 'blocklist' as const, label: 'Blocklist', icon: <ShieldIcon /> },
+                ].map((tab) => (
+                    <button
+                        key={tab.key}
+                        onClick={() => setActiveTab(tab.key)}
+                        className={`px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
+                            activeTab === tab.key
+                                ? 'bg-accent text-accent-fg shadow-sm'
+                                : 'text-fg-secondary hover:bg-bg-secondary hover:text-fg'
+                        }`}
+                    >
+                        {tab.icon}
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
             {/* Search */}
+            {activeTab === 'users' ? (
             <div className="relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
                 <input
@@ -424,9 +588,20 @@ export default function ClientDeskPage() {
                     className="w-full pl-10 pr-4 py-2.5 bg-bg-card border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
                 />
             </div>
+            ) : (
+            <div className="relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                <input
+                    value={blocklistSearch}
+                    onChange={(e) => setBlocklistSearch(e.target.value)}
+                    placeholder="Search blocked email..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-bg-card border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
+                />
+            </div>
+            )}
 
             {/* Tier Filter */}
-            <div className="flex flex-wrap gap-1.5">
+            {activeTab === 'users' && <div className="flex flex-wrap gap-1.5">
                 {[
                     { key: 'all', label: `📋 ${t('clientdesk.filterAll')}` },
                     { key: 'trial', label: '⏱️ Trial' },
@@ -449,10 +624,10 @@ export default function ClientDeskPage() {
                         </button>
                     );
                 })}
-            </div>
+            </div>}
 
             {/* Create Form */}
-            {showCreate && (
+            {activeTab === 'users' && showCreate && (
                 <div className="bg-bg-card rounded-xl border border-border p-5 shadow-[var(--shadow)] animate-slide-up">
                     <h3 className="text-sm font-semibold text-fg mb-4 flex items-center gap-2">
                         <SendIcon /> {t('clientdesk.inviteTitle')}
@@ -505,26 +680,26 @@ export default function ClientDeskPage() {
             )}
 
             {/* User Count */}
-            <div className="flex items-center gap-2 text-fg-muted text-sm">
+            {activeTab === 'users' && <div className="flex items-center gap-2 text-fg-muted text-sm">
                 <UsersIcon /> {t('clientdesk.userCount')}: <span className="font-semibold text-fg">{filteredUsers.length}</span>{filterTier !== 'all' && <span className="text-fg-muted"> / {users.length}</span>}
-            </div>
+            </div>}
 
             {/* Error */}
-            {error && (
+            {activeTab === 'users' && error && (
                 <div className="text-danger text-sm bg-danger/5 border border-danger/20 rounded-lg px-4 py-3 animate-fade-in">
                     {error}
                 </div>
             )}
 
             {/* Loading */}
-            {loading && users.length === 0 && (
+            {activeTab === 'users' && loading && users.length === 0 && (
                 <div className="flex items-center justify-center py-12">
                     <span className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
                 </div>
             )}
 
             {/* Users Table */}
-            {!loading && users.length === 0 && !error ? (
+            {activeTab === 'users' && (!loading && users.length === 0 && !error ? (
                 <div className="text-center text-fg-muted py-12 bg-bg-card rounded-xl border border-border">
                     {t('clientdesk.noUsers')}
                 </div>
@@ -655,6 +830,124 @@ export default function ClientDeskPage() {
                         ))}
                     </div>
                 </>
+            ))}
+
+            {activeTab === 'blocklist' && (
+                <div className="space-y-4">
+                    <form onSubmit={handleAddBlock} className="bg-bg-card rounded-xl border border-border p-5 shadow-[var(--shadow)]">
+                        <h3 className="text-sm font-semibold text-fg mb-4 flex items-center gap-2">
+                            <ShieldIcon /> Add Blocked Email
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] gap-3">
+                            <input
+                                type="email"
+                                value={blockEmail}
+                                onChange={(e) => setBlockEmail(e.target.value)}
+                                placeholder="email@example.com"
+                                required
+                                className="px-3 py-2.5 bg-bg border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
+                            />
+                            <input
+                                value={blockReason}
+                                onChange={(e) => setBlockReason(e.target.value)}
+                                placeholder="Internal note"
+                                className="px-3 py-2.5 bg-bg border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
+                            />
+                            <button
+                                type="submit"
+                                disabled={blockActionLoading === 'add'}
+                                className="px-4 py-2.5 bg-accent text-accent-fg rounded-xl text-sm font-semibold cursor-pointer hover:opacity-85 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {blockActionLoading === 'add' ? (
+                                    <span className="w-4 h-4 border-2 border-accent-fg/30 border-t-accent-fg rounded-full animate-spin" />
+                                ) : (
+                                    <><ShieldIcon /> Block</>
+                                )}
+                            </button>
+                        </div>
+                    </form>
+
+                    {blocklistError && (
+                        <div className="text-danger text-sm bg-danger/5 border border-danger/20 rounded-lg px-4 py-3 animate-fade-in">
+                            {blocklistError}
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-2 text-fg-muted text-sm">
+                        <ShieldIcon /> Blocklist: <span className="font-semibold text-fg">{blocklist.length}</span>
+                    </div>
+
+                    {blocklistLoading && blocklist.length === 0 ? (
+                        <div className="flex items-center justify-center py-12">
+                            <span className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                        </div>
+                    ) : blocklist.length === 0 ? (
+                        <div className="text-center text-fg-muted py-12 bg-bg-card rounded-xl border border-border">
+                            No blocked emails yet
+                        </div>
+                    ) : (
+                        <div className="overflow-auto max-h-[calc(100vh-360px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)]">
+                            <table className="w-full">
+                                <thead className="sticky top-0 bg-bg-card z-10 border-b border-border">
+                                    <tr className="text-left text-fg text-xs uppercase tracking-wider">
+                                        <th className="px-4 py-3 font-medium">Email</th>
+                                        <th className="px-4 py-3 font-medium">Status</th>
+                                        <th className="px-4 py-3 font-medium">Existing User</th>
+                                        <th className="px-4 py-3 font-medium">Reason</th>
+                                        <th className="px-4 py-3 font-medium">Updated</th>
+                                        <th className="px-4 py-3 font-medium text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border-light">
+                                    {blocklist.map((block) => (
+                                        <tr key={block.id} className="text-fg hover:bg-bg-secondary/50 transition-colors">
+                                            <td className="px-4 py-2.5 text-sm font-medium">{block.email}</td>
+                                            <td className="px-4 py-2.5">
+                                                {block.is_active ? (
+                                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400">Active</span>
+                                                ) : (
+                                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-sm">
+                                                {block.suspended_user_id ? (
+                                                    <span className="font-mono text-xs text-fg-muted">{block.suspended_user_id}</span>
+                                                ) : (
+                                                    <span className="text-fg-muted">—</span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-sm text-fg-secondary max-w-[240px] truncate" title={block.reason || ''}>
+                                                {block.reason || <span className="text-fg-muted">—</span>}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-sm">{formatDate(block.updated_at)}</td>
+                                            <td className="px-4 py-2.5 text-right">
+                                                <div className="flex justify-end gap-1.5">
+                                                    <button
+                                                        onClick={() => handleToggleBlock(block)}
+                                                        disabled={blockActionLoading === block.id}
+                                                        className={`px-2.5 py-1.5 text-white rounded-lg text-xs font-medium cursor-pointer transition-all active:scale-90 disabled:opacity-50 flex items-center gap-1 ${
+                                                            block.is_active ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700'
+                                                        }`}
+                                                    >
+                                                        {block.is_active ? <UnlockIcon /> : <ShieldIcon />}
+                                                        {block.is_active ? 'Disable' : 'Enable'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteBlock(block)}
+                                                        disabled={blockActionLoading === block.id}
+                                                        className="px-2.5 py-1.5 bg-red-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-red-600 transition-all active:scale-90 disabled:opacity-50 flex items-center gap-1"
+                                                    >
+                                                        <TrashIcon /> Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
             )}
 
             {/* Delete Dialog */}
