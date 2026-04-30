@@ -5,6 +5,19 @@ import { escapeTelegramHtml, notifyAlert, notifyInfo } from '@/lib/telegram';
 // Direct connection to Fastpik Supabase (bypasses Vercel Attack Challenge)
 const fastpikSupabase = getFastpikSupabase();
 
+type FastpikTenant = {
+    id: string;
+    name: string;
+    domain: string | null;
+    is_active: boolean | null;
+};
+
+type FastpikSetting = {
+    user_id: string;
+    vendor_name: string | null;
+    tenant_id: string | null;
+};
+
 // GET - list users
 export async function GET() {
     try {
@@ -20,20 +33,30 @@ export async function GET() {
             page++;
         }
 
-        // Get subscriptions and profiles
+        // Get subscriptions, profiles, and tenant assignment data
         const { data: subscriptions } = await fastpikSupabase.from('subscriptions').select('user_id, tier, status, end_date, trial_end_date');
         const { data: profiles } = await fastpikSupabase.from('profiles').select('id, full_name');
+        const { data: settings } = await fastpikSupabase.from('settings').select('user_id, vendor_name, tenant_id');
+        const { data: tenants } = await fastpikSupabase.from('tenants').select('id, name, domain, is_active');
 
         const subMap = new Map(subscriptions?.map(s => [s.user_id, s]) || []);
         const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+        const settingsMap = new Map((settings as FastpikSetting[] | null)?.map(s => [s.user_id, s]) || []);
+        const tenantMap = new Map((tenants as FastpikTenant[] | null)?.map(t => [t.id, t]) || []);
 
         const formattedUsers = authUsers.map(user => {
             const subscription = subMap.get(user.id);
             const profile = profileMap.get(user.id);
+            const setting = settingsMap.get(user.id);
+            const tenant = setting?.tenant_id ? tenantMap.get(setting.tenant_id) : null;
             return {
                 id: user.id,
                 email: user.email || 'No Email',
                 name: profile?.full_name || user.user_metadata?.full_name || 'No Name',
+                vendorName: setting?.vendor_name || null,
+                tenantId: setting?.tenant_id || null,
+                tenantName: tenant?.name || null,
+                tenantDomain: tenant?.domain || null,
                 createdAt: user.created_at,
                 tier: subscription?.tier || 'none',
                 status: subscription?.status || 'inactive',
@@ -176,10 +199,79 @@ export async function DELETE(request: NextRequest) {
 // PATCH - edit user (set_expiry, change_tier)
 export async function PATCH(request: NextRequest) {
     try {
-        const { userId, action, tier, expiryDate } = await request.json();
+        const { userId, action, tier, expiryDate, tenantId } = await request.json();
 
         if (!userId) {
             return NextResponse.json({ success: false, message: 'User ID is required' }, { status: 400 });
+        }
+
+        if (action === 'assign_tenant') {
+            if (!tenantId) {
+                return NextResponse.json({ success: false, message: 'Tenant ID is required' }, { status: 400 });
+            }
+
+            const { data: userData, error: userError } = await fastpikSupabase.auth.admin.getUserById(userId);
+            if (userError || !userData?.user) {
+                return NextResponse.json(
+                    { success: false, message: userError?.message || 'Fastpik user not found' },
+                    { status: 404 },
+                );
+            }
+
+            const { data: setting, error: settingError } = await fastpikSupabase
+                .from('settings')
+                .select('user_id')
+                .eq('user_id', userId)
+                .maybeSingle();
+
+            if (settingError) {
+                throw settingError;
+            }
+
+            if (!setting) {
+                return NextResponse.json(
+                    { success: false, message: 'Fastpik settings row not found for this user' },
+                    { status: 404 },
+                );
+            }
+
+            const { data: tenant, error: tenantError } = await fastpikSupabase
+                .from('tenants')
+                .select('id, name, domain, is_active')
+                .eq('id', tenantId)
+                .maybeSingle();
+
+            if (tenantError) {
+                throw tenantError;
+            }
+
+            const activeTenant = tenant as FastpikTenant | null;
+            if (!activeTenant || activeTenant.is_active !== true) {
+                return NextResponse.json(
+                    { success: false, message: 'Active Fastpik tenant not found' },
+                    { status: 400 },
+                );
+            }
+
+            const { error: updateError } = await fastpikSupabase
+                .from('settings')
+                .update({
+                    tenant_id: activeTenant.id,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('user_id', userId);
+
+            if (updateError) throw updateError;
+
+            return NextResponse.json({
+                success: true,
+                message: 'Fastpik tenant assignment updated',
+                tenant: {
+                    id: activeTenant.id,
+                    name: activeTenant.name,
+                    domain: activeTenant.domain,
+                },
+            });
         }
 
         if (action === 'set_expiry') {
