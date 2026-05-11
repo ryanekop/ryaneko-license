@@ -116,7 +116,7 @@ function extractMayarSource(customFields?: MayarCustomField[]): string | null {
 }
 
 function formatMayarSourceTelegramLine(source: string | null): string {
-    return source ? `📣 Sumber: ${tg(source)}\n` : '';
+    return source ? `🧭 Sumber: ${tg(source)}\n` : '';
 }
 
 // Check if product name matches Fastpik
