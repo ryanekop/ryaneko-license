@@ -84,6 +84,17 @@ function isClientDeskProduct(productName: string): boolean {
 }
 
 type ClientDeskPlanTier = 'pro_monthly' | 'pro_quarterly' | 'pro_yearly' | 'lifetime';
+type SubscriptionHistoryEventType = 'purchased' | 'renewed' | 'changed';
+
+type ExistingSubscription = {
+    id: string;
+    user_id: string;
+    tier: ClientDeskPlanTier | 'free' | string;
+    status: 'active' | 'expired' | 'trial' | string;
+    end_date: string | null;
+    trial_end_date: string | null;
+    mayar_transaction_id: string | null;
+};
 
 const BUNDLE_KEYWORDS = ['bundle', 'bundling'];
 
@@ -285,6 +296,86 @@ function resolveSubscriptionDates(tier: ClientDeskPlanTier) {
     };
 }
 
+function resolveSubscriptionHistoryEvent(
+    existing: ExistingSubscription | null,
+    nextTier: ClientDeskPlanTier
+): SubscriptionHistoryEventType {
+    const existingTier = existing?.tier || '';
+    const hadPaidPlan =
+        existing?.status === 'active' &&
+        (existingTier === 'lifetime' || existingTier.startsWith('pro_'));
+
+    if (!hadPaidPlan) return 'purchased';
+    return existingTier === nextTier ? 'renewed' : 'changed';
+}
+
+async function hasTransactionInSubscriptionHistory(supabase: any, transactionId: string): Promise<boolean> {
+    const { count, error } = await supabase
+        .from('subscription_history')
+        .select('id', { count: 'exact', head: true })
+        .eq('transaction_id', transactionId);
+
+    if (error) {
+        console.error('[Client Desk Webhook] Failed to check subscription history transaction:', error);
+        return false;
+    }
+
+    return (count || 0) > 0;
+}
+
+async function insertSubscriptionHistory(params: {
+    supabase: any;
+    userId: string;
+    subscriptionId: string | null;
+    eventType: SubscriptionHistoryEventType;
+    tier: ClientDeskPlanTier;
+    periodStart: string;
+    periodEnd: string | null;
+    amount: number;
+    transactionId: string;
+    metadata: Record<string, unknown>;
+}) {
+    const {
+        supabase,
+        userId,
+        subscriptionId,
+        eventType,
+        tier,
+        periodStart,
+        periodEnd,
+        amount,
+        transactionId,
+        metadata,
+    } = params;
+
+    const alreadyExists = await hasTransactionInSubscriptionHistory(supabase, transactionId);
+    if (alreadyExists) return false;
+
+    const { error } = await supabase
+        .from('subscription_history')
+        .insert({
+            user_id: userId,
+            subscription_id: subscriptionId,
+            event_type: eventType,
+            tier,
+            status: 'active',
+            period_start: periodStart,
+            period_end: periodEnd,
+            amount,
+            currency: 'IDR',
+            transaction_id: transactionId,
+            metadata,
+        });
+
+    if (error) {
+        const duplicateCode = (error as { code?: string }).code;
+        if (duplicateCode === '23505') return false;
+        throw new Error(`[Client Desk Webhook] Subscription history insert failed: ${error.message}`);
+    }
+
+    return true;
+}
+
 async function hasTransactionInSubscriptions(supabase: any, transactionId: string): Promise<boolean> {
     const { count, error } = await supabase
         .from('subscriptions')
@@ -302,10 +393,10 @@ async function hasTransactionInSubscriptions(supabase: any, transactionId: strin
 async function getSubscriptionByUserId(supabase: any, userId: string) {
     const { data } = await supabase
         .from('subscriptions')
-        .select('user_id, mayar_transaction_id')
+        .select('id, user_id, tier, status, end_date, trial_end_date, mayar_transaction_id')
         .eq('user_id', userId)
         .maybeSingle();
-    return data as { user_id: string; mayar_transaction_id: string | null } | null;
+    return data as ExistingSubscription | null;
 }
 
 async function findUserIdByEmail(supabase: any, email: string): Promise<string | null> {
@@ -432,15 +523,24 @@ async function upsertBundleSubscription(params: {
     transactionId: string;
     startDate: string;
     endDate: string | null;
+    amount: number;
+    email: string;
+    name: string;
+    productName: string;
 }) {
-    const { app, supabase, userId, tier, transactionId, startDate, endDate } = params;
+    const { app, supabase, userId, tier, transactionId, startDate, endDate, amount, email, name, productName } = params;
 
-    const existing = await getSubscriptionByUserId(supabase, userId);
-    if (existing?.mayar_transaction_id === transactionId) {
+    if (app === 'clientdesk' && await hasTransactionInSubscriptionHistory(supabase, transactionId)) {
         return false;
     }
 
-    const { error } = await supabase
+    const existing = await getSubscriptionByUserId(supabase, userId);
+    if (app !== 'clientdesk' && existing?.mayar_transaction_id === transactionId) {
+        return false;
+    }
+    const eventType = resolveSubscriptionHistoryEvent(existing, tier);
+
+    const { data, error } = await supabase
         .from('subscriptions')
         .upsert({
             user_id: userId,
@@ -450,10 +550,32 @@ async function upsertBundleSubscription(params: {
             end_date: endDate,
             mayar_transaction_id: transactionId,
             updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id' });
+        }, { onConflict: 'user_id' })
+        .select('id')
+        .single();
 
     if (error) {
         throw new Error(`[Bundle Webhook] ${app} subscription upsert failed: ${error.message}`);
+    }
+
+    if (app === 'clientdesk') {
+        await insertSubscriptionHistory({
+            supabase,
+            userId,
+            subscriptionId: data?.id || existing?.id || null,
+            eventType,
+            tier,
+            periodStart: startDate,
+            periodEnd: endDate,
+            amount,
+            transactionId,
+            metadata: {
+                source: 'bundle_webhook',
+                productName,
+                customerEmail: email,
+                customerName: name,
+            },
+        });
     }
 
     return true;
@@ -726,6 +848,11 @@ async function handleClientDeskSubscription(
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
     }
 
+    if (await hasTransactionInSubscriptionHistory(clientdeskSupabase, transactionId)) {
+        console.log(`[Client Desk Webhook] Duplicate transaction ignored: ${transactionId}`);
+        return jsonResponse('Success', `Duplicate transaction ignored: ${transactionId}`);
+    }
+
     const isLifetime = planTier === 'lifetime';
     const planDurationDays = isLifetime ? 0 : getClientDeskPlanDurationDays(planTier);
 
@@ -791,6 +918,9 @@ async function handleClientDeskSubscription(
         return jsonResponse('Error', 'User ID error', 500);
     }
 
+    const existingSubscription = await getSubscriptionByUserId(clientdeskSupabase, userId);
+    const historyEventType = resolveSubscriptionHistoryEvent(existingSubscription, planTier);
+
     // Calculate dates
     const startDate = new Date();
     let endDate = null;
@@ -801,7 +931,7 @@ async function handleClientDeskSubscription(
     }
 
     // Upsert subscription
-    const { error: upsertError } = await clientdeskSupabase
+    const { data: subscriptionRow, error: upsertError } = await clientdeskSupabase
         .from('subscriptions')
         .upsert({
             user_id: userId,
@@ -811,12 +941,32 @@ async function handleClientDeskSubscription(
             end_date: endDate,
             mayar_transaction_id: transactionId,
             updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
+        }, { onConflict: 'user_id' })
+        .select('id')
+        .single();
 
     if (upsertError) {
         console.error('[Client Desk Webhook] Subscription upsert error:', upsertError);
         throw upsertError;
     }
+
+    await insertSubscriptionHistory({
+        supabase: clientdeskSupabase,
+        userId,
+        subscriptionId: subscriptionRow?.id || existingSubscription?.id || null,
+        eventType: historyEventType,
+        tier: planTier,
+        periodStart: startDate.toISOString(),
+        periodEnd: endDate,
+        amount: amountNum,
+        transactionId,
+        metadata: {
+            source: 'clientdesk_webhook',
+            productName,
+            customerEmail: email,
+            customerName: name,
+        },
+    });
 
     // Telegram notification
     await notifyPurchase(
@@ -899,7 +1049,7 @@ async function handleBundleSubscription(
     }
 
     const [alreadyInClientDesk, alreadyInFastpik] = await Promise.all([
-        hasTransactionInSubscriptions(clientdeskSupabase, transactionId),
+        hasTransactionInSubscriptionHistory(clientdeskSupabase, transactionId),
         hasTransactionInSubscriptions(fastpikSupabase, transactionId),
     ]);
 
@@ -942,6 +1092,10 @@ async function handleBundleSubscription(
             transactionId,
             startDate,
             endDate,
+            amount: amountNum,
+            email,
+            name,
+            productName,
         }),
         upsertBundleSubscription({
             app: 'fastpik',
@@ -951,6 +1105,10 @@ async function handleBundleSubscription(
             transactionId,
             startDate,
             endDate,
+            amount: amountNum,
+            email,
+            name,
+            productName,
         }),
     ]);
 
