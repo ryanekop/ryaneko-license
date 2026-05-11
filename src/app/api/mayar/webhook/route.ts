@@ -316,7 +316,7 @@ async function hasTransactionInSubscriptionHistory(supabase: any, transactionId:
         .eq('transaction_id', transactionId);
 
     if (error) {
-        console.error('[Client Desk Webhook] Failed to check subscription history transaction:', error);
+        console.error('[Mayar Webhook] Failed to check subscription history transaction:', error);
         return false;
     }
 
@@ -370,7 +370,7 @@ async function insertSubscriptionHistory(params: {
     if (error) {
         const duplicateCode = (error as { code?: string }).code;
         if (duplicateCode === '23505') return false;
-        throw new Error(`[Client Desk Webhook] Subscription history insert failed: ${error.message}`);
+        throw new Error(`[Mayar Webhook] Subscription history insert failed: ${error.message}`);
     }
 
     return true;
@@ -530,12 +530,12 @@ async function upsertBundleSubscription(params: {
 }) {
     const { app, supabase, userId, tier, transactionId, startDate, endDate, amount, email, name, productName } = params;
 
-    if (app === 'clientdesk' && await hasTransactionInSubscriptionHistory(supabase, transactionId)) {
+    if (await hasTransactionInSubscriptionHistory(supabase, transactionId)) {
         return false;
     }
 
     const existing = await getSubscriptionByUserId(supabase, userId);
-    if (app !== 'clientdesk' && existing?.mayar_transaction_id === transactionId) {
+    if (existing?.mayar_transaction_id === transactionId) {
         return false;
     }
     const eventType = resolveSubscriptionHistoryEvent(existing, tier);
@@ -558,25 +558,24 @@ async function upsertBundleSubscription(params: {
         throw new Error(`[Bundle Webhook] ${app} subscription upsert failed: ${error.message}`);
     }
 
-    if (app === 'clientdesk') {
-        await insertSubscriptionHistory({
-            supabase,
-            userId,
-            subscriptionId: data?.id || existing?.id || null,
-            eventType,
-            tier,
-            periodStart: startDate,
-            periodEnd: endDate,
-            amount,
-            transactionId,
-            metadata: {
-                source: 'bundle_webhook',
-                productName,
-                customerEmail: email,
-                customerName: name,
-            },
-        });
-    }
+    await insertSubscriptionHistory({
+        supabase,
+        userId,
+        subscriptionId: data?.id || existing?.id || null,
+        eventType,
+        tier,
+        periodStart: startDate,
+        periodEnd: endDate,
+        amount,
+        transactionId,
+        metadata: {
+            source: app === 'clientdesk' ? 'bundle_webhook' : 'bundle_webhook_fastpik',
+            app,
+            productName,
+            customerEmail: email,
+            customerName: name,
+        },
+    });
 
     return true;
 }
@@ -657,6 +656,16 @@ async function handleFastpikSubscription(
     const isLifetime = planTier === 'lifetime';
     const planDurationDays = isLifetime ? 0 : getClientDeskPlanDurationDays(planTier);
 
+    const [alreadyInHistory, alreadyInSubscriptions] = await Promise.all([
+        hasTransactionInSubscriptionHistory(fastpikSupabase, transactionId),
+        hasTransactionInSubscriptions(fastpikSupabase, transactionId),
+    ]);
+
+    if (alreadyInHistory || alreadyInSubscriptions) {
+        console.log(`[Fastpik Webhook] Duplicate transaction ignored: ${transactionId}`);
+        return jsonResponse('Success', `Duplicate transaction ignored: ${transactionId}`);
+    }
+
     // Find or Create User in Fastpik Supabase
     let userId: string | undefined;
     const { data: newUser, error: createError } = await fastpikSupabase.auth.admin.createUser({
@@ -716,15 +725,18 @@ async function handleFastpikSubscription(
 
     // Calculate dates
     const startDate = new Date();
-    let endDate = null;
+    let endDate: string | null = null;
     if (!isLifetime) {
         const end = new Date(startDate);
         end.setDate(end.getDate() + planDurationDays);
         endDate = end.toISOString();
     }
 
+    const existingSubscription = await getSubscriptionByUserId(fastpikSupabase, userId);
+    const historyEventType = resolveSubscriptionHistoryEvent(existingSubscription, planTier);
+
     // Upsert subscription
-    const { error: upsertError } = await fastpikSupabase
+    const { data: subscriptionRow, error: upsertError } = await fastpikSupabase
         .from('subscriptions')
         .upsert({
             user_id: userId,
@@ -734,12 +746,32 @@ async function handleFastpikSubscription(
             end_date: endDate,
             mayar_transaction_id: transactionId,
             updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
+        }, { onConflict: 'user_id' })
+        .select('id')
+        .single();
 
     if (upsertError) {
         console.error('[Fastpik Webhook] Subscription upsert error:', upsertError);
         throw upsertError;
     }
+
+    await insertSubscriptionHistory({
+        supabase: fastpikSupabase,
+        userId,
+        subscriptionId: subscriptionRow?.id || existingSubscription?.id || null,
+        eventType: historyEventType,
+        tier: planTier,
+        periodStart: startDate.toISOString(),
+        periodEnd: endDate,
+        amount: amountNum,
+        transactionId,
+        metadata: {
+            source: 'fastpik_webhook',
+            productName,
+            customerEmail: email,
+            customerName: name,
+        },
+    });
 
     // Telegram notification
     await notifyPurchase(
@@ -1048,10 +1080,12 @@ async function handleBundleSubscription(
         return jsonResponse('Success', `Unknown bundle amount: ${amountNum}`);
     }
 
-    const [alreadyInClientDesk, alreadyInFastpik] = await Promise.all([
+    const [alreadyInClientDesk, alreadyInFastpikHistory, alreadyInFastpikSubscription] = await Promise.all([
         hasTransactionInSubscriptionHistory(clientdeskSupabase, transactionId),
+        hasTransactionInSubscriptionHistory(fastpikSupabase, transactionId),
         hasTransactionInSubscriptions(fastpikSupabase, transactionId),
     ]);
+    const alreadyInFastpik = alreadyInFastpikHistory || alreadyInFastpikSubscription;
 
     if (alreadyInClientDesk && alreadyInFastpik) {
         console.log(`[Bundle Webhook] Duplicate transaction ignored: ${transactionId}`);
