@@ -69,6 +69,56 @@ function extractInstagram(customFields?: MayarCustomField[]): string | null {
     return null;
 }
 
+const MAYAR_SOURCE_FIELD_KEY = '4b8103bb-6e38-41ce-99ca-a7ad8f9b6136';
+
+function getMayarCustomFields(orderData: MayarOrderData, payload: MayarWebhookPayload): MayarCustomField[] {
+    const dataCustomFields = payload.data?.custom_field;
+    const directCustomFields = payload.custom_field;
+    const customFields = orderData.custom_field || dataCustomFields || directCustomFields || [];
+    return Array.isArray(customFields) ? customFields : [];
+}
+
+function getCustomFieldOptionValue(option?: MayarCustomField['selectedValue']): string | null {
+    const value = option?.value || option?.name;
+    return typeof value === 'string' ? value.trim() || null : null;
+}
+
+function extractMayarSource(customFields?: MayarCustomField[]): string | null {
+    if (!Array.isArray(customFields)) return null;
+
+    for (const field of customFields) {
+        const fieldName = field.name?.toLowerCase() || '';
+        const isSourceField =
+            field.key === MAYAR_SOURCE_FIELD_KEY ||
+            (
+                fieldName.includes('darimana') &&
+                fieldName.includes('mengetahui') &&
+                fieldName.includes('ryan eko apps')
+            );
+
+        if (!isSourceField) continue;
+
+        const selectedValue = getCustomFieldOptionValue(field.selectedValue);
+        if (selectedValue) return selectedValue;
+
+        if (Array.isArray(field.value)) {
+            const selectedOption = field.value.find((option) => option.selected);
+            const selectedOptionValue = getCustomFieldOptionValue(selectedOption);
+            if (selectedOptionValue) return selectedOptionValue;
+        }
+
+        if (typeof field.value === 'string') {
+            return field.value.trim() || null;
+        }
+    }
+
+    return null;
+}
+
+function formatMayarSourceTelegramLine(source: string | null): string {
+    return source ? `📣 Sumber: ${tg(source)}\n` : '';
+}
+
 // Check if product name matches Fastpik
 function isFastpikProduct(productName: string): boolean {
     const lowerName = productName.toLowerCase();
@@ -619,6 +669,7 @@ async function handleFastpikSubscription(
     const amount = (data as any).amount || (data as any).totalAmount || (data as any).gross_amount || (payload as any).amount || 0;
     const transactionId = orderData.id || (data as any).transactionId || (payload as any).id || `TRX-${Date.now()}`;
     const productName = orderData.productName || orderData.product_name || payload.data?.productName || payload.data?.product_name || 'unknown';
+    const mayarSource = extractMayarSource(getMayarCustomFields(orderData, payload));
 
     console.log(`[Fastpik Webhook] Email: ${email}, Name: ${name}, Status: ${rawStatus}, Amount: ${amount}`);
 
@@ -779,6 +830,7 @@ async function handleFastpikSubscription(
         `📦 ${tg(planTier)}\n` +
         `👤 ${tg(name)}\n` +
         `📧 ${tg(email)}\n` +
+        formatMayarSourceTelegramLine(mayarSource) +
         `💰 Rp ${formatAmountIdr(amountNum)}\n` +
         `🔑 Transaction: ${tg(transactionId)}`
     );
@@ -825,6 +877,7 @@ async function handleClientDeskSubscription(
 
     const amount = (data as any).amount || (data as any).totalAmount || (data as any).gross_amount || (payload as any).amount || 0;
     const transactionId = orderData.id || (data as any).transactionId || (payload as any).id || `TRX-${Date.now()}`;
+    const mayarSource = extractMayarSource(getMayarCustomFields(orderData, payload));
 
     console.log(`[Client Desk Webhook] Email: ${email}, Name: ${name}, Status: ${rawStatus}, Amount: ${amount}`);
 
@@ -1006,6 +1059,7 @@ async function handleClientDeskSubscription(
         `📦 ${tg(planTier)}\n` +
         `👤 ${tg(name)}\n` +
         `📧 ${tg(email)}\n` +
+        formatMayarSourceTelegramLine(mayarSource) +
         `💰 Rp ${formatAmountIdr(amountNum)}\n` +
         `🔑 Transaction: ${tg(transactionId)}`
     );
@@ -1055,6 +1109,7 @@ async function handleBundleSubscription(
     const amountNum = parseAmountNumber(amount);
     const transactionId = orderData.id || (data as any).transactionId || (payload as any).id || `TRX-${Date.now()}`;
     const productName = orderData.productName || orderData.product_name || payload.data?.productName || payload.data?.product_name || 'unknown';
+    const mayarSource = extractMayarSource(getMayarCustomFields(orderData, payload));
 
     console.log(`[Bundle Webhook] Email: ${email}, Name: ${name}, Status: ${rawStatus}, Amount: ${amount}`);
 
@@ -1157,6 +1212,7 @@ async function handleBundleSubscription(
         `🎯 Tier: ${tg(planTier)}\n` +
         `👤 ${tg(name)}\n` +
         `📧 ${tg(email)}\n` +
+        formatMayarSourceTelegramLine(mayarSource) +
         `💰 Rp ${formatAmountIdr(amountNum)}\n` +
         `🔑 Transaction: ${tg(transactionId)}\n` +
         `✅ Client Desk: ${updatedClientDesk ? 'updated' : 'skip'}\n` +
@@ -1313,8 +1369,9 @@ async function handleLicensePurchase(
     const customerName = orderData.customerName || orderData.customer_name || 'Customer';
     const productName = orderData.productName || orderData.product_name || '';
     const addons = orderData.addOn || orderData.addons || orderData.items || [];
-    const customFields = orderData.custom_field || (payload.data as any)?.custom_field || [];
+    const customFields = getMayarCustomFields(orderData, payload);
     const customerInstagram = extractInstagram(customFields);
+    const mayarSource = extractMayarSource(customFields);
 
     console.log(`Detected Product: ${product.name} (${product.slug})`);
 
@@ -1399,6 +1456,7 @@ async function handleLicensePurchase(
         `👤 ${tg(customerName)}\n` +
         `📧 ${tg(customerEmail)}\n` +
         `${customerInstagram ? `📸 @${tg(customerInstagram)}\n` : ''}` +
+        formatMayarSourceTelegramLine(mayarSource) +
         `🔑 ${reservedLicenses.length} license(s)\n\n` +
         `<b>Serial Keys:</b>\n${serialList}\n` +
         `${includesPlugin || isBundle ? '\n🔌 + Plugin' : ''}`

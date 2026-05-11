@@ -106,6 +106,7 @@ export interface MayarWebhookPayload {
 }
 
 export interface MayarCustomField {
+    key?: string;
     name: string;
     value: string | MayarCustomFieldOption[];
     fieldType?: string;
@@ -113,6 +114,7 @@ export interface MayarCustomField {
 }
 
 export interface MayarCustomFieldOption {
+    key?: string;
     name: string;
     value: string;
     selected?: boolean;
