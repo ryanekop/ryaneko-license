@@ -312,6 +312,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                             </button>
                             <button
                                 onClick={() => {
+                                    void fetch('/api/admin/auth', { method: 'DELETE' });
                                     sessionStorage.removeItem('admin_auth');
                                     setIsAuthenticated(false);
                                 }}
