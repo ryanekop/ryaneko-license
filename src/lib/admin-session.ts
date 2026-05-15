@@ -63,8 +63,26 @@ export function verifyAdminRequest(request: NextRequest) {
     return verifyAdminSessionValue(request.cookies.get(ADMIN_SESSION_COOKIE)?.value);
 }
 
+function firstHeaderValue(value: string | null) {
+    return value?.split(',')[0]?.trim() || '';
+}
+
+function getPublicRequestOrigin(request: NextRequest) {
+    const forwardedProto = firstHeaderValue(request.headers.get('x-forwarded-proto'));
+    const forwardedHost =
+        firstHeaderValue(request.headers.get('x-forwarded-host')) ||
+        firstHeaderValue(request.headers.get('host'));
+
+    if (forwardedHost) {
+        const protocol = forwardedProto || request.nextUrl.protocol.replace(':', '');
+        return `${protocol}://${forwardedHost}`;
+    }
+
+    return request.nextUrl.origin;
+}
+
 export function isSameOriginRequest(request: NextRequest) {
-    const requestOrigin = new URL(request.url).origin;
+    const requestOrigin = getPublicRequestOrigin(request);
     const origin = request.headers.get('origin');
     if (origin && origin !== requestOrigin) return false;
 

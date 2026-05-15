@@ -6,6 +6,16 @@ type MaintenanceMode = 'off' | 'on' | 'scheduled';
 
 const SETTINGS_ID = 'global';
 const MODES = new Set<MaintenanceMode>(['off', 'on', 'scheduled']);
+const CLIENTDESK_PREVIEW_BASE =
+    process.env.CLIENTDESK_API_URL || 'https://clientdesk.ryanekoapp.web.id';
+
+function getPreviewUrls() {
+    const baseUrl = CLIENTDESK_PREVIEW_BASE.replace(/\/+$/, '');
+    return {
+        id: `${baseUrl}/id/maintenance`,
+        en: `${baseUrl}/en/maintenance`,
+    };
+}
 
 function unauthorized() {
     return NextResponse.json(
@@ -96,7 +106,11 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        return NextResponse.json({ success: true, settings: data || null });
+        return NextResponse.json({
+            success: true,
+            settings: data || null,
+            previewUrls: getPreviewUrls(),
+        });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown server error';
         return NextResponse.json({ success: false, error: message }, { status: 500 });
@@ -138,7 +152,11 @@ export async function PUT(request: NextRequest) {
             );
         }
 
-        return NextResponse.json({ success: true, settings: data });
+        return NextResponse.json({
+            success: true,
+            settings: data,
+            previewUrls: getPreviewUrls(),
+        });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown server error';
         return NextResponse.json({ success: false, error: message }, { status: 500 });

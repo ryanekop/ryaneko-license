@@ -17,6 +17,16 @@ type MaintenanceSettings = {
     updated_at?: string;
 };
 
+type PreviewUrls = {
+    id: string;
+    en: string;
+};
+
+const DEFAULT_PREVIEW_URLS: PreviewUrls = {
+    id: 'https://clientdesk.ryanekoapp.web.id/id/maintenance',
+    en: 'https://clientdesk.ryanekoapp.web.id/en/maintenance',
+};
+
 const DEFAULT_SETTINGS: MaintenanceSettings = {
     mode: 'scheduled',
     announcement_enabled: true,
@@ -97,6 +107,7 @@ export function ClientDeskMaintenancePanel() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [previewUrls, setPreviewUrls] = useState<PreviewUrls>(DEFAULT_PREVIEW_URLS);
 
     const status = useMemo(() => resolveStatus(settings), [settings]);
 
@@ -118,6 +129,7 @@ export function ClientDeskMaintenancePanel() {
                 return;
             }
             applySettings(data.settings || DEFAULT_SETTINGS);
+            setPreviewUrls(data.previewUrls || DEFAULT_PREVIEW_URLS);
         } catch {
             setError('Connection error');
         } finally {
@@ -153,6 +165,7 @@ export function ClientDeskMaintenancePanel() {
                 return;
             }
             applySettings(data.settings);
+            setPreviewUrls(data.previewUrls || DEFAULT_PREVIEW_URLS);
             setSuccess('Maintenance setting saved. Client Desk will use this config within a few seconds.');
         } catch {
             setError('Connection error');
@@ -177,7 +190,7 @@ export function ClientDeskMaintenancePanel() {
                             type="button"
                             onClick={fetchSettings}
                             disabled={loading || saving}
-                            className="rounded-lg border border-border bg-bg px-3 py-2 text-xs font-semibold text-fg hover:bg-bg-secondary disabled:opacity-50"
+                            className="cursor-pointer rounded-lg border border-border bg-bg px-3 py-2 text-xs font-semibold text-fg hover:bg-bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             Refresh
                         </button>
@@ -195,7 +208,7 @@ export function ClientDeskMaintenancePanel() {
                             <select
                                 value={settings.mode}
                                 onChange={(event) => setSettings((current) => ({ ...current, mode: event.target.value as MaintenanceMode }))}
-                                className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-fg focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                                className="w-full cursor-pointer rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-fg focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                             >
                                 <option value="off">Off</option>
                                 <option value="scheduled">Scheduled</option>
@@ -203,16 +216,16 @@ export function ClientDeskMaintenancePanel() {
                             </select>
                         </label>
 
-                        <label className="flex items-center justify-between gap-3 rounded-xl border border-border bg-bg px-3 py-2.5">
+                        <label className="flex min-h-[50px] cursor-pointer items-center justify-between gap-3 rounded-xl border border-border bg-bg px-3 py-2">
                             <span>
-                                <span className="block text-sm font-semibold text-fg">Announcement bar</span>
-                                <span className="text-xs text-fg-muted">Show top warning until end time.</span>
+                                <span className="block text-sm font-semibold leading-5 text-fg">Announcement bar</span>
+                                <span className="text-xs leading-4 text-fg-muted">Show top warning until end time.</span>
                             </span>
                             <input
                                 type="checkbox"
                                 checked={settings.announcement_enabled}
                                 onChange={(event) => setSettings((current) => ({ ...current, announcement_enabled: event.target.checked }))}
-                                className="h-5 w-5 accent-[var(--accent)]"
+                                className="h-4 w-4 cursor-pointer accent-[var(--accent)]"
                             />
                         </label>
 
@@ -222,7 +235,7 @@ export function ClientDeskMaintenancePanel() {
                                 type="datetime-local"
                                 value={startInput}
                                 onChange={(event) => setStartInput(event.target.value)}
-                                className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-fg focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                                className="w-full cursor-pointer rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-fg focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                             />
                         </label>
 
@@ -232,7 +245,7 @@ export function ClientDeskMaintenancePanel() {
                                 type="datetime-local"
                                 value={endInput}
                                 onChange={(event) => setEndInput(event.target.value)}
-                                className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-fg focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                                className="w-full cursor-pointer rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-fg focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                             />
                         </label>
                     </div>
@@ -281,7 +294,27 @@ export function ClientDeskMaintenancePanel() {
                     </div>
 
                     <div className="rounded-xl border border-border bg-bg-card p-5 shadow-[var(--shadow)]">
-                        <h4 className="text-sm font-semibold text-fg">Preview</h4>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <h4 className="text-sm font-semibold text-fg">Preview</h4>
+                            <div className="flex flex-wrap gap-2">
+                                <a
+                                    href={previewUrls.id}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="cursor-pointer rounded-lg border border-border bg-bg px-3 py-2 text-xs font-semibold text-fg hover:bg-bg-secondary"
+                                >
+                                    Preview ID
+                                </a>
+                                <a
+                                    href={previewUrls.en}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="cursor-pointer rounded-lg border border-border bg-bg px-3 py-2 text-xs font-semibold text-fg hover:bg-bg-secondary"
+                                >
+                                    Preview EN
+                                </a>
+                            </div>
+                        </div>
                         <div className="mt-3 space-y-2 text-sm text-fg-secondary">
                             <p><span className="font-medium text-fg">Window:</span> {formatJakarta(jakartaInputToIso(startInput))} - {formatJakarta(jakartaInputToIso(endInput))} WIB</p>
                             <p><span className="font-medium text-fg">Banner:</span> {settings.announcement_message_id}</p>
@@ -304,7 +337,7 @@ export function ClientDeskMaintenancePanel() {
                         <button
                             type="submit"
                             disabled={saving}
-                            className="rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-fg transition-all hover:opacity-85 active:scale-95 disabled:opacity-50"
+                            className="cursor-pointer rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-fg transition-all hover:opacity-85 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {saving ? 'Saving...' : 'Save Maintenance Setting'}
                         </button>
