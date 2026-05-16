@@ -80,7 +80,8 @@ export async function GET(request: NextRequest) {
     const ascending = sort === 'asc';
 
     query = query
-        .order('created_at', { ascending })
+        .order('updated_at', { ascending })
+        .order('id', { ascending })
         .range(offset, offset + limit - 1);
 
     const { data, count, error } = await query;
@@ -175,6 +176,8 @@ export async function PATCH(request: NextRequest) {
             };
         }
 
+        finalUpdate.updated_at = new Date().toISOString();
+
         const { data, error } = await supabaseAdmin
             .from('licenses')
             .update(finalUpdate)
@@ -241,6 +244,7 @@ export async function DELETE(request: NextRequest) {
                 status: 'available',
                 activated_at: null,
                 last_active_at: null,
+                updated_at: new Date().toISOString(),
             })
             .eq('id', id)
             .select()

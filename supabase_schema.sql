@@ -87,7 +87,8 @@ CREATE TABLE licenses (
   
   batch_info TEXT,
   notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Index for faster lookups
@@ -95,6 +96,7 @@ CREATE INDEX idx_licenses_product_id ON licenses(product_id);
 CREATE INDEX idx_licenses_status ON licenses(status);
 CREATE INDEX idx_licenses_serial_hash ON licenses(serial_hash);
 CREATE INDEX idx_licenses_customer_email ON licenses(customer_email);
+CREATE INDEX idx_licenses_updated_at ON licenses(updated_at DESC);
 
 -- =============================================
 -- TABLE: purchases

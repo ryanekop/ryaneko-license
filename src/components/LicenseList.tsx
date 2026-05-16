@@ -23,6 +23,7 @@ interface License {
     last_active_at?: string;
     reset_count?: number;
     created_at: string;
+    updated_at?: string;
     product?: Product;
 }
 

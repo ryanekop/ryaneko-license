@@ -1299,6 +1299,7 @@ async function reserveLicenses(
                 customer_instagram: customerInstagram || null,
                 order_id: orderId,
                 batch_info: batchInfo,
+                updated_at: new Date().toISOString(),
             })
             .eq('id', license.id)
             .select()

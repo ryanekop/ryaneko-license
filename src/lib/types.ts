@@ -52,6 +52,7 @@ export interface License {
     batch_info?: string;
     notes?: string;
     created_at: string;
+    updated_at: string;
 
     // Join
     product?: Product;

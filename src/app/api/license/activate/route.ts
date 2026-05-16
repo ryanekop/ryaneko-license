@@ -167,6 +167,7 @@ export async function POST(request: NextRequest) {
                 device_hash: deviceHash,
                 activated_at: now,
                 last_active_at: now,
+                updated_at: now,
             })
             .eq('id', licenseData.id);
 
