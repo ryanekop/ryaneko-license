@@ -83,6 +83,7 @@ CREATE TABLE licenses (
   device_hash TEXT,
   activated_at TIMESTAMPTZ,
   last_active_at TIMESTAMPTZ,
+  reset_count INTEGER NOT NULL DEFAULT 0 CHECK (reset_count >= 0),
   
   batch_info TEXT,
   notes TEXT,

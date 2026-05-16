@@ -111,16 +111,39 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Missing license ID' }, { status: 400 });
         }
 
-        let finalUpdate = updateData;
+        let finalUpdate: Record<string, unknown> = { ...updateData };
+
+        if ('reset_count' in finalUpdate) {
+            const rawResetCount = finalUpdate.reset_count;
+            if (rawResetCount === '' || rawResetCount === null || rawResetCount === undefined) {
+                return NextResponse.json({ error: 'reset_count must be a non-negative integer' }, { status: 400 });
+            }
+            const resetCount = typeof rawResetCount === 'number' ? rawResetCount : Number(rawResetCount);
+            if (!Number.isInteger(resetCount) || resetCount < 0) {
+                return NextResponse.json({ error: 'reset_count must be a non-negative integer' }, { status: 400 });
+            }
+            finalUpdate.reset_count = resetCount;
+        }
 
         // Reset action: clear device data and set to available, keep owner info
         if (action === 'reset') {
+            const { data: current, error: currentError } = await supabaseAdmin
+                .from('licenses')
+                .select('reset_count')
+                .eq('id', id)
+                .single();
+
+            if (currentError) {
+                return NextResponse.json({ error: currentError.message }, { status: 500 });
+            }
+
             finalUpdate = {
                 status: 'available',
                 device_type: null,
                 device_id: null,
                 activated_at: null,
                 last_active_at: null,
+                reset_count: (Number(current?.reset_count) || 0) + 1,
             };
         }
 

@@ -21,6 +21,7 @@ interface License {
     device_id?: string;
     activated_at?: string;
     last_active_at?: string;
+    reset_count?: number;
     created_at: string;
     product?: Product;
 }
@@ -156,6 +157,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [unrevokeDialog, setUnrevokeDialog] = useState<License | null>(null);
     const [deleteDialog, setDeleteDialog] = useState<License | null>(null);
     const [editTableDialog, setEditTableDialog] = useState<License | null>(null);
+    const [editResetDialog, setEditResetDialog] = useState<License | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
     const [newPlatform, setNewPlatform] = useState('');
     const [editSerial, setEditSerial] = useState('');
@@ -163,6 +165,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [editEmail, setEditEmail] = useState('');
     const [editInstagram, setEditInstagram] = useState('');
     const [editDeviceId, setEditDeviceId] = useState('');
+    const [editResetCount, setEditResetCount] = useState('');
 
     const fetchLicenses = useCallback(async () => {
         setLoading(true);
@@ -300,6 +303,29 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
         }
     };
 
+    const handleEditResetCount = async () => {
+        if (!editResetDialog) return;
+        const resetCount = Number(editResetCount);
+        if (!Number.isInteger(resetCount) || resetCount < 0) return;
+
+        setActionLoading(true);
+        try {
+            await fetch('/api/admin/licenses', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editResetDialog.id,
+                    reset_count: resetCount,
+                }),
+            });
+            setEditResetDialog(null);
+            setEditResetCount('');
+            fetchLicenses();
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     const openEditTable = (license: License) => {
         setEditTableDialog(license);
         setEditSerial(license.serial_key);
@@ -307,6 +333,11 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
         setEditEmail(license.customer_email || '');
         setEditInstagram(license.customer_instagram || '');
         setEditDeviceId(license.device_id || '');
+    };
+
+    const openEditResetCount = (license: License) => {
+        setEditResetDialog(license);
+        setEditResetCount(String(license.reset_count ?? 0));
     };
 
     const getStatusBadge = (status: string) => {
@@ -345,6 +376,9 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
             year: 'numeric',
         });
     };
+
+    const parsedResetCount = Number(editResetCount);
+    const isResetCountValid = editResetCount.trim() !== '' && Number.isInteger(parsedResetCount) && parsedResetCount >= 0;
 
     return (
         <div className="space-y-4 sm:space-y-5">
@@ -433,7 +467,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
 
             {/* === DESKTOP TABLE === */}
             <div className="hidden md:block overflow-auto max-h-[calc(100vh-280px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)] animate-slide-up stagger-1" style={{ opacity: 0 }}>
-                <table className="w-full min-w-[1200px]">
+                <table className="w-full min-w-[1320px]">
                     <thead className="sticky top-0 bg-bg-card z-10 border-b border-border">
                         <tr className="text-left text-fg-muted text-xs uppercase tracking-wider whitespace-nowrap">
                             <th className="px-4 py-3 font-medium">No.</th>
@@ -444,6 +478,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.instagram} {t('list.instagram')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.monitor} {t('list.device')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.fingerprint} {t('list.deviceId')}</span></th>
+                            <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.reset} {t('list.resetCount')}</span></th>
                             <th className="px-4 py-3 font-medium"><span className="flex items-center gap-1.5">{Icons.calendar} {t('list.activated')}</span></th>
                             <th className="px-4 py-3 font-medium text-right">{t('list.actions')}</th>
                         </tr>
@@ -460,12 +495,14 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-16" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-24" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-4 w-20" /></td>
+                                    <td className="px-4 py-3"><div className="skeleton h-4 w-12" /></td>
+                                    <td className="px-4 py-3"><div className="skeleton h-4 w-20" /></td>
                                     <td className="px-4 py-3"><div className="skeleton h-8 w-44 ml-auto" /></td>
                                 </tr>
                             ))
                         ) : licenses.length === 0 ? (
                             <tr>
-                                <td colSpan={10} className="px-4 py-16 text-center text-fg-muted animate-fade-in">
+                                <td colSpan={11} className="px-4 py-16 text-center text-fg-muted animate-fade-in">
                                     <div className="flex justify-center mb-3 opacity-40">{Icons.inbox}</div>
                                     {t('list.empty')}
                                 </td>
@@ -485,12 +522,14 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                     <td className="px-4 py-3 text-sm whitespace-nowrap">{license.customer_instagram ? <span className="text-fuchsia-600 dark:text-fuchsia-400">@{license.customer_instagram}</span> : <span className="text-fg-muted">-</span>}</td>
                                     <td className="px-4 py-3 text-sm whitespace-nowrap">{license.device_type || <span className="text-fg-muted">-</span>}</td>
                                     <td className="px-4 py-3 font-mono text-xs text-fg-muted max-w-[150px] truncate" title={license.device_id || '-'}>{license.device_id || <span className="text-fg-muted">-</span>}</td>
+                                    <td className="px-4 py-3 text-sm font-semibold text-fg-secondary whitespace-nowrap">{license.reset_count ?? 0}x</td>
                                     <td className="px-4 py-3 text-sm text-fg-muted whitespace-nowrap">{formatDate(license.activated_at)}</td>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center justify-end gap-1.5">
                                             <button onClick={() => openEditTable(license)} className="inline-flex items-center justify-center w-8 h-8 bg-indigo-500 text-white rounded-lg cursor-pointer hover:bg-indigo-600 hover:shadow-md transition-all active:scale-95" title={t('action.editTable')}>{Icons.editTable}</button>
                                             <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="inline-flex items-center justify-center w-8 h-8 bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 hover:shadow-md transition-all active:scale-95" title={t('action.editDevice')}>{Icons.edit}</button>
                                             <button onClick={() => setResetDialog(license)} className="inline-flex items-center justify-center w-8 h-8 bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 hover:shadow-md transition-all active:scale-95" title={t('action.reset')}>{Icons.reset}</button>
+                                            <button onClick={() => openEditResetCount(license)} className="inline-flex items-center justify-center w-8 h-8 bg-sky-600 text-white rounded-lg cursor-pointer hover:bg-sky-700 hover:shadow-md transition-all active:scale-95" title={t('action.editResetCount')}>{Icons.chart}</button>
                                             {license.status === 'revoked' ? (
                                                 <button onClick={() => setUnrevokeDialog(license)} className="inline-flex items-center justify-center w-8 h-8 bg-emerald-600 text-white rounded-lg cursor-pointer hover:bg-emerald-700 hover:shadow-md transition-all active:scale-95" title={t('action.unrevoke')}>{Icons.reset}</button>
                                             ) : (
@@ -545,12 +584,14 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                     {license.customer_instagram && <p className="text-fuchsia-600 dark:text-fuchsia-400">@{license.customer_instagram}</p>}
                                     <p>{t('list.device')}: {license.device_type || '—'}</p>
                                     {license.device_id && <p className="font-mono text-fg-muted truncate" title={license.device_id}>{t('list.deviceId')}: {license.device_id}</p>}
+                                    <p>{t('list.resetCount')}: {license.reset_count ?? 0}x</p>
                                     <p>{t('list.activated')}: {formatDate(license.activated_at)}</p>
                                 </div>
                                 <div className="flex gap-1.5 flex-wrap">
                                     <button onClick={() => openEditTable(license)} className="flex items-center justify-center w-8 h-8 bg-indigo-500 text-white rounded-lg cursor-pointer hover:bg-indigo-600 transition-all active:scale-95" title={t('action.editTable')}>{Icons.editTable}</button>
                                     <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="flex items-center justify-center w-8 h-8 bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 transition-all active:scale-95" title={t('action.editDevice')}>{Icons.edit}</button>
                                     <button onClick={() => setResetDialog(license)} className="flex items-center justify-center w-8 h-8 bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 transition-all active:scale-95" title={t('action.reset')}>{Icons.reset}</button>
+                                    <button onClick={() => openEditResetCount(license)} className="flex items-center justify-center w-8 h-8 bg-sky-600 text-white rounded-lg cursor-pointer hover:bg-sky-700 transition-all active:scale-95" title={t('action.editResetCount')}>{Icons.chart}</button>
                                     {license.status === 'revoked' ? (
                                         <button onClick={() => setUnrevokeDialog(license)} className="flex items-center justify-center w-8 h-8 bg-emerald-600 text-white rounded-lg cursor-pointer hover:bg-emerald-700 transition-all active:scale-95" title={t('action.unrevoke')}>{Icons.reset}</button>
                                     ) : (
@@ -619,6 +660,43 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                     <div className="flex gap-2 pt-2">
                         <button onClick={() => { setChangeDialog(null); setNewPlatform(''); }} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
                         <button onClick={handleChangeDevice} disabled={!newPlatform || actionLoading} className="flex-1 py-2.5 bg-warning text-white rounded-xl cursor-pointer hover:bg-amber-600 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
+                            {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('dialog.confirm')}
+                        </button>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* Edit Reset Count Dialog */}
+            <Dialog open={!!editResetDialog} onClose={() => { setEditResetDialog(null); setEditResetCount(''); }}>
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 bg-sky-600/10 text-sky-600 rounded-lg shrink-0">{Icons.chart}</div>
+                        <div>
+                            <h3 className="text-base sm:text-lg font-semibold text-fg">{t('dialog.editResetCountTitle')}</h3>
+                            <p className="text-fg-muted text-sm mt-0.5">{t('dialog.editResetCountDesc')}</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-bg-secondary rounded-lg p-3 text-sm space-y-1">
+                        <div className="text-fg-muted">{t('dialog.resetSerial')}: <span className="text-fg font-mono text-xs sm:text-sm break-all">{editResetDialog?.serial_key}</span></div>
+                        <div className="text-fg-muted">{t('dialog.resetUser')}: <span className="text-fg">{editResetDialog?.customer_name || '-'}</span></div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-medium text-fg-muted mb-1 block">{t('dialog.resetCount')}</label>
+                        <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={editResetCount}
+                            onChange={(e) => setEditResetCount(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all"
+                        />
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                        <button onClick={() => { setEditResetDialog(null); setEditResetCount(''); }} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
+                        <button onClick={handleEditResetCount} disabled={!isResetCountValid || actionLoading} className="flex-1 py-2.5 bg-sky-600 text-white rounded-xl cursor-pointer hover:bg-sky-700 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
                             {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('dialog.confirm')}
                         </button>
                     </div>
