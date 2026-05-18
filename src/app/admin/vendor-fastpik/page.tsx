@@ -88,6 +88,7 @@ export default function VendorFastpikPage() {
     const [tenants, setTenants] = useState<TenantData[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Create/Edit form
     const [showForm, setShowForm] = useState(false);
@@ -242,6 +243,15 @@ export default function VendorFastpikPage() {
         formLogoUrl,
         formDomain || editingTenant?.domain || null
     );
+    const trimmedSearchQuery = searchQuery.trim();
+    const filteredTenants = trimmedSearchQuery
+        ? tenants.filter((tenant) => {
+            const q = trimmedSearchQuery.toLowerCase();
+            return tenant.name.toLowerCase().includes(q)
+                || tenant.slug.toLowerCase().includes(q)
+                || (tenant.domain || '').toLowerCase().includes(q);
+        })
+        : tenants;
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -270,11 +280,21 @@ export default function VendorFastpikPage() {
                 </div>
             </div>
 
-
+            {/* Search */}
+            <div className="relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                <input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t('vendor.searchPlaceholder')}
+                    className="w-full pl-10 pr-4 py-2.5 bg-bg-card border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
+                />
+            </div>
 
             {/* Vendor Count */}
             <div className="flex items-center gap-2 text-fg-muted text-sm">
-                <GlobeIcon /> {t('vendor.totalVendors')}: <span className="font-semibold text-fg">{tenants.length}</span>
+                <GlobeIcon /> {t('vendor.totalVendors')}: <span className="font-semibold text-fg">{filteredTenants.length}</span>
+                {trimmedSearchQuery && <span className="text-fg-muted">/ {tenants.length}</span>}
             </div>
 
             {/* Error */}
@@ -302,9 +322,13 @@ export default function VendorFastpikPage() {
                 <div className="text-center text-fg-muted py-12 bg-bg-card rounded-xl border border-border">
                     {t('vendor.noVendors')}
                 </div>
-            ) : tenants.length > 0 && (
+            ) : !loading && filteredTenants.length === 0 && !error ? (
+                <div className="text-center text-fg-muted py-12 bg-bg-card rounded-xl border border-border">
+                    {t('vendor.noSearchResults')}
+                </div>
+            ) : filteredTenants.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {tenants.map((tenant, i) => {
+                    {filteredTenants.map((tenant, i) => {
                         const tenantLogoUrl = resolveTenantAssetUrl(tenant.logo_url, tenant.domain);
                         return (
                             <div
