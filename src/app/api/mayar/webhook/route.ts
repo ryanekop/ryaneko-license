@@ -329,21 +329,94 @@ function isPaymentSuccess(rawStatus: unknown): boolean {
     return rawStatus === true || ['success', 'settlement', 'paid', 'successful'].includes(statusStr || '');
 }
 
-function resolveSubscriptionDates(tier: ClientDeskPlanTier) {
-    const startDate = new Date();
+type ResolvedSubscriptionPeriod = {
+    startDate: string;
+    baseDate: string;
+    endDate: string | null;
+    extendedFromActive: boolean;
+};
+
+function getActiveSubscriptionBaseDate(existing: ExistingSubscription | null, now: Date): Date | null {
+    if (!existing || existing.status !== 'active' || !existing.end_date) return null;
+
+    const endDate = new Date(existing.end_date);
+    if (Number.isNaN(endDate.getTime()) || endDate.getTime() <= now.getTime()) return null;
+
+    return endDate;
+}
+
+function resolveSubscriptionDates(
+    tier: ClientDeskPlanTier,
+    existing: ExistingSubscription | null = null,
+    now = new Date()
+): ResolvedSubscriptionPeriod {
     const isLifetime = tier === 'lifetime';
     let endDate: string | null = null;
+    const activeBaseDate = getActiveSubscriptionBaseDate(existing, now);
+    const baseDate = activeBaseDate || now;
 
     if (!isLifetime) {
-        const end = new Date(startDate);
+        const end = new Date(baseDate);
         end.setDate(end.getDate() + getClientDeskPlanDurationDays(tier));
         endDate = end.toISOString();
     }
 
     return {
-        startDate: startDate.toISOString(),
+        startDate: now.toISOString(),
+        baseDate: baseDate.toISOString(),
         endDate,
+        extendedFromActive: Boolean(activeBaseDate),
     };
+}
+
+function getSubscriptionEventLabel(eventType: SubscriptionHistoryEventType): string {
+    if (eventType === 'renewed') return 'Renewal';
+    if (eventType === 'changed') return 'Plan Changed';
+    return 'Purchase';
+}
+
+function getSubscriptionNotificationTitle(appLabel: string, eventType: SubscriptionHistoryEventType): string {
+    return `${appLabel} ${getSubscriptionEventLabel(eventType)}`;
+}
+
+function formatTelegramDate(dateValue: string | null): string {
+    if (!dateValue) return 'Selamanya';
+
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return '-';
+
+    return new Intl.DateTimeFormat('id-ID', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Jakarta',
+    }).format(date);
+}
+
+function formatSubscriptionPeriodTelegramLines(period: ResolvedSubscriptionPeriod): string {
+    return (
+        `📅 Berlaku dari: ${tg(formatTelegramDate(period.baseDate))}\n` +
+        `📅 Berlaku sampai: ${tg(formatTelegramDate(period.endDate))}\n` +
+        (period.extendedFromActive ? '➕ Durasi ditambahkan dari masa aktif sebelumnya\n' : '')
+    );
+}
+
+function resolveCombinedSubscriptionEvent(
+    events: Array<SubscriptionHistoryEventType | null | undefined>
+): SubscriptionHistoryEventType {
+    if (events.includes('changed')) return 'changed';
+    if (events.includes('renewed')) return 'renewed';
+    return 'purchased';
+}
+
+function hasActivePaidSubscription(existing: ExistingSubscription | null, now = new Date()): boolean {
+    if (!existing || existing.status !== 'active') return false;
+
+    const existingTier = existing.tier || '';
+    if (existingTier === 'lifetime') return true;
+    if (!existingTier.startsWith('pro_') || !existing.end_date) return false;
+
+    const endDate = new Date(existing.end_date);
+    return !Number.isNaN(endDate.getTime()) && endDate.getTime() > now.getTime();
 }
 
 function resolveSubscriptionHistoryEvent(
@@ -351,9 +424,7 @@ function resolveSubscriptionHistoryEvent(
     nextTier: ClientDeskPlanTier
 ): SubscriptionHistoryEventType {
     const existingTier = existing?.tier || '';
-    const hadPaidPlan =
-        existing?.status === 'active' &&
-        (existingTier === 'lifetime' || existingTier.startsWith('pro_'));
+    const hadPaidPlan = hasActivePaidSubscription(existing);
 
     if (!hadPaidPlan) return 'purchased';
     return existingTier === nextTier ? 'renewed' : 'changed';
@@ -565,30 +636,38 @@ async function ensureBundleUser(params: {
     return userId;
 }
 
+type BundleSubscriptionUpsertResult = {
+    updated: boolean;
+    eventType: SubscriptionHistoryEventType | null;
+    period: ResolvedSubscriptionPeriod | null;
+};
+
 async function upsertBundleSubscription(params: {
     app: BundleApp;
     supabase: any;
     userId: string;
     tier: ClientDeskPlanTier;
     transactionId: string;
-    startDate: string;
-    endDate: string | null;
     amount: number;
     email: string;
     name: string;
     productName: string;
-}) {
-    const { app, supabase, userId, tier, transactionId, startDate, endDate, amount, email, name, productName } = params;
+}): Promise<BundleSubscriptionUpsertResult> {
+    const { app, supabase, userId, tier, transactionId, amount, email, name, productName } = params;
 
     if (await hasTransactionInSubscriptionHistory(supabase, transactionId)) {
-        return false;
+        return { updated: false, eventType: null, period: null };
+    }
+    if (await hasTransactionInSubscriptions(supabase, transactionId)) {
+        return { updated: false, eventType: null, period: null };
     }
 
     const existing = await getSubscriptionByUserId(supabase, userId);
     if (existing?.mayar_transaction_id === transactionId) {
-        return false;
+        return { updated: false, eventType: null, period: null };
     }
     const eventType = resolveSubscriptionHistoryEvent(existing, tier);
+    const period = resolveSubscriptionDates(tier, existing);
 
     const { data, error } = await supabase
         .from('subscriptions')
@@ -596,8 +675,8 @@ async function upsertBundleSubscription(params: {
             user_id: userId,
             tier,
             status: 'active',
-            start_date: startDate,
-            end_date: endDate,
+            start_date: period.startDate,
+            end_date: period.endDate,
             mayar_transaction_id: transactionId,
             updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id' })
@@ -614,8 +693,8 @@ async function upsertBundleSubscription(params: {
         subscriptionId: data?.id || existing?.id || null,
         eventType,
         tier,
-        periodStart: startDate,
-        periodEnd: endDate,
+        periodStart: period.baseDate,
+        periodEnd: period.endDate,
         amount,
         transactionId,
         metadata: {
@@ -627,7 +706,7 @@ async function upsertBundleSubscription(params: {
         },
     });
 
-    return true;
+    return { updated: true, eventType, period };
 }
 
 // =============================================
@@ -704,9 +783,6 @@ async function handleFastpikSubscription(
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
     }
 
-    const isLifetime = planTier === 'lifetime';
-    const planDurationDays = isLifetime ? 0 : getClientDeskPlanDurationDays(planTier);
-
     const [alreadyInHistory, alreadyInSubscriptions] = await Promise.all([
         hasTransactionInSubscriptionHistory(fastpikSupabase, transactionId),
         hasTransactionInSubscriptions(fastpikSupabase, transactionId),
@@ -774,17 +850,9 @@ async function handleFastpikSubscription(
         return jsonResponse('Error', 'User ID error', 500);
     }
 
-    // Calculate dates
-    const startDate = new Date();
-    let endDate: string | null = null;
-    if (!isLifetime) {
-        const end = new Date(startDate);
-        end.setDate(end.getDate() + planDurationDays);
-        endDate = end.toISOString();
-    }
-
     const existingSubscription = await getSubscriptionByUserId(fastpikSupabase, userId);
     const historyEventType = resolveSubscriptionHistoryEvent(existingSubscription, planTier);
+    const period = resolveSubscriptionDates(planTier, existingSubscription);
 
     // Upsert subscription
     const { data: subscriptionRow, error: upsertError } = await fastpikSupabase
@@ -793,8 +861,8 @@ async function handleFastpikSubscription(
             user_id: userId,
             tier: planTier,
             status: 'active',
-            start_date: startDate.toISOString(),
-            end_date: endDate,
+            start_date: period.startDate,
+            end_date: period.endDate,
             mayar_transaction_id: transactionId,
             updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' })
@@ -812,8 +880,8 @@ async function handleFastpikSubscription(
         subscriptionId: subscriptionRow?.id || existingSubscription?.id || null,
         eventType: historyEventType,
         tier: planTier,
-        periodStart: startDate.toISOString(),
-        periodEnd: endDate,
+        periodStart: period.baseDate,
+        periodEnd: period.endDate,
         amount: amountNum,
         transactionId,
         metadata: {
@@ -826,12 +894,13 @@ async function handleFastpikSubscription(
 
     // Telegram notification
     await notifyPurchase(
-        `<b>Fastpik Purchase!</b>\n\n` +
+        `<b>${getSubscriptionNotificationTitle('Fastpik', historyEventType)}!</b>\n\n` +
         `📦 ${tg(planTier)}\n` +
         `👤 ${tg(name)}\n` +
         `📧 ${tg(email)}\n` +
         formatMayarSourceTelegramLine(mayarSource) +
         `💰 Rp ${formatAmountIdr(amountNum)}\n` +
+        formatSubscriptionPeriodTelegramLines(period) +
         `🔑 Transaction: ${tg(transactionId)}`
     );
 
@@ -933,13 +1002,15 @@ async function handleClientDeskSubscription(
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
     }
 
-    if (await hasTransactionInSubscriptionHistory(clientdeskSupabase, transactionId)) {
+    const [alreadyInHistory, alreadyInSubscriptions] = await Promise.all([
+        hasTransactionInSubscriptionHistory(clientdeskSupabase, transactionId),
+        hasTransactionInSubscriptions(clientdeskSupabase, transactionId),
+    ]);
+
+    if (alreadyInHistory || alreadyInSubscriptions) {
         console.log(`[Client Desk Webhook] Duplicate transaction ignored: ${transactionId}`);
         return jsonResponse('Success', `Duplicate transaction ignored: ${transactionId}`);
     }
-
-    const isLifetime = planTier === 'lifetime';
-    const planDurationDays = isLifetime ? 0 : getClientDeskPlanDurationDays(planTier);
 
     // Find or Create User in Client Desk Supabase
     let userId: string | undefined;
@@ -1006,14 +1077,7 @@ async function handleClientDeskSubscription(
     const existingSubscription = await getSubscriptionByUserId(clientdeskSupabase, userId);
     const historyEventType = resolveSubscriptionHistoryEvent(existingSubscription, planTier);
 
-    // Calculate dates
-    const startDate = new Date();
-    let endDate = null;
-    if (!isLifetime) {
-        const end = new Date(startDate);
-        end.setDate(end.getDate() + planDurationDays);
-        endDate = end.toISOString();
-    }
+    const period = resolveSubscriptionDates(planTier, existingSubscription);
 
     // Upsert subscription
     const { data: subscriptionRow, error: upsertError } = await clientdeskSupabase
@@ -1022,8 +1086,8 @@ async function handleClientDeskSubscription(
             user_id: userId,
             tier: planTier,
             status: 'active',
-            start_date: startDate.toISOString(),
-            end_date: endDate,
+            start_date: period.startDate,
+            end_date: period.endDate,
             mayar_transaction_id: transactionId,
             updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' })
@@ -1041,8 +1105,8 @@ async function handleClientDeskSubscription(
         subscriptionId: subscriptionRow?.id || existingSubscription?.id || null,
         eventType: historyEventType,
         tier: planTier,
-        periodStart: startDate.toISOString(),
-        periodEnd: endDate,
+        periodStart: period.baseDate,
+        periodEnd: period.endDate,
         amount: amountNum,
         transactionId,
         metadata: {
@@ -1055,12 +1119,13 @@ async function handleClientDeskSubscription(
 
     // Telegram notification
     await notifyPurchase(
-        `<b>Client Desk Purchase!</b>\n\n` +
+        `<b>${getSubscriptionNotificationTitle('Client Desk', historyEventType)}!</b>\n\n` +
         `📦 ${tg(planTier)}\n` +
         `👤 ${tg(name)}\n` +
         `📧 ${tg(email)}\n` +
         formatMayarSourceTelegramLine(mayarSource) +
         `💰 Rp ${formatAmountIdr(amountNum)}\n` +
+        formatSubscriptionPeriodTelegramLines(period) +
         `🔑 Transaction: ${tg(transactionId)}`
     );
 
@@ -1135,11 +1200,13 @@ async function handleBundleSubscription(
         return jsonResponse('Success', `Unknown bundle amount: ${amountNum}`);
     }
 
-    const [alreadyInClientDesk, alreadyInFastpikHistory, alreadyInFastpikSubscription] = await Promise.all([
+    const [alreadyInClientDeskHistory, alreadyInClientDeskSubscription, alreadyInFastpikHistory, alreadyInFastpikSubscription] = await Promise.all([
         hasTransactionInSubscriptionHistory(clientdeskSupabase, transactionId),
+        hasTransactionInSubscriptions(clientdeskSupabase, transactionId),
         hasTransactionInSubscriptionHistory(fastpikSupabase, transactionId),
         hasTransactionInSubscriptions(fastpikSupabase, transactionId),
     ]);
+    const alreadyInClientDesk = alreadyInClientDeskHistory || alreadyInClientDeskSubscription;
     const alreadyInFastpik = alreadyInFastpikHistory || alreadyInFastpikSubscription;
 
     if (alreadyInClientDesk && alreadyInFastpik) {
@@ -1170,17 +1237,13 @@ async function handleBundleSubscription(
         return jsonResponse('Error', 'User ID error', 500);
     }
 
-    const { startDate, endDate } = resolveSubscriptionDates(planTier);
-
-    const [updatedClientDesk, updatedFastpik] = await Promise.all([
+    const [clientDeskResult, fastpikResult] = await Promise.all([
         upsertBundleSubscription({
             app: 'clientdesk',
             supabase: clientdeskSupabase,
             userId: clientDeskUserId,
             tier: planTier,
             transactionId,
-            startDate,
-            endDate,
             amount: amountNum,
             email,
             name,
@@ -1192,8 +1255,6 @@ async function handleBundleSubscription(
             userId: fastpikUserId,
             tier: planTier,
             transactionId,
-            startDate,
-            endDate,
             amount: amountNum,
             email,
             name,
@@ -1201,13 +1262,31 @@ async function handleBundleSubscription(
         }),
     ]);
 
-    if (!updatedClientDesk && !updatedFastpik) {
+    if (!clientDeskResult.updated && !fastpikResult.updated) {
         console.log(`[Bundle Webhook] Duplicate upsert skipped by transaction: ${transactionId}`);
         return jsonResponse('Success', `Duplicate transaction ignored: ${transactionId}`);
     }
 
+    const bundleEventType = resolveCombinedSubscriptionEvent([
+        clientDeskResult.eventType,
+        fastpikResult.eventType,
+    ]);
+
+    const formatBundleResultLine = (label: string, result: BundleSubscriptionUpsertResult) => {
+        if (!result.updated || !result.eventType || !result.period) {
+            return `✅ ${label}: skip\n`;
+        }
+
+        return (
+            `✅ ${label}: ${tg(getSubscriptionEventLabel(result.eventType))}\n` +
+            `   Berlaku dari: ${tg(formatTelegramDate(result.period.baseDate))}\n` +
+            `   Berlaku sampai: ${tg(formatTelegramDate(result.period.endDate))}\n` +
+            (result.period.extendedFromActive ? '   Ditambahkan dari masa aktif sebelumnya\n' : '')
+        );
+    };
+
     await notifyPurchase(
-        `<b>Bundle Purchase!</b>\n\n` +
+        `<b>${getSubscriptionNotificationTitle('Bundle', bundleEventType)}!</b>\n\n` +
         `📦 Client Desk + Fastpik\n` +
         `🎯 Tier: ${tg(planTier)}\n` +
         `👤 ${tg(name)}\n` +
@@ -1215,8 +1294,8 @@ async function handleBundleSubscription(
         formatMayarSourceTelegramLine(mayarSource) +
         `💰 Rp ${formatAmountIdr(amountNum)}\n` +
         `🔑 Transaction: ${tg(transactionId)}\n` +
-        `✅ Client Desk: ${updatedClientDesk ? 'updated' : 'skip'}\n` +
-        `✅ Fastpik: ${updatedFastpik ? 'updated' : 'skip'}`
+        formatBundleResultLine('Client Desk', clientDeskResult) +
+        formatBundleResultLine('Fastpik', fastpikResult)
     );
 
     console.log(`[Bundle Webhook] ✅ Subscription activated: ${email} -> ${planTier}`);
