@@ -7,6 +7,7 @@ type ClientDeskSubscription = {
     user_id: string;
     tier: string;
     status: string;
+    start_date: string | null;
     end_date: string | null;
     trial_end_date: string | null;
 };
@@ -23,6 +24,16 @@ type SubscriptionPatch = {
 
 function getErrorMessage(error: unknown) {
     return error instanceof Error ? error.message : 'Unknown server error';
+}
+
+function getLatestDate(...dates: Array<string | null | undefined>) {
+    const latest = dates.reduce<number>((max, date) => {
+        if (!date) return max;
+        const time = new Date(date).getTime();
+        return Number.isFinite(time) && time > max ? time : max;
+    }, 0);
+
+    return latest > 0 ? new Date(latest).toISOString() : null;
 }
 
 // GET - list users
@@ -43,7 +54,7 @@ export async function GET() {
         }
 
         // Get subscriptions and profiles
-        const { data: subscriptions } = await supabase.from('subscriptions').select('user_id, tier, status, end_date, trial_end_date');
+        const { data: subscriptions } = await supabase.from('subscriptions').select('user_id, tier, status, start_date, end_date, trial_end_date');
         const { data: profiles } = await supabase.from('profiles').select('id, full_name');
 
         const subMap = new Map((subscriptions || []).map((s) => {
@@ -63,6 +74,7 @@ export async function GET() {
                 email: user.email || 'No Email',
                 name: profile?.full_name || user.user_metadata?.full_name || 'No Name',
                 createdAt: user.created_at,
+                registeredSortAt: getLatestDate(user.email_confirmed_at, subscription?.start_date, user.created_at) || user.created_at,
                 tier: subscription?.tier || 'none',
                 status: subscription?.status || 'inactive',
                 expiresAt: subscription?.end_date || subscription?.trial_end_date || null,
@@ -71,7 +83,7 @@ export async function GET() {
             };
         });
 
-        formattedUsers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        formattedUsers.sort((a, b) => new Date(b.registeredSortAt).getTime() - new Date(a.registeredSortAt).getTime());
 
         return NextResponse.json({ success: true, users: formattedUsers });
     } catch (error: unknown) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { User } from '@supabase/supabase-js';
 import { getFastpikSupabase } from '@/lib/fastpik-supabase';
 import { escapeTelegramHtml, notifyAlert, notifyInfo } from '@/lib/telegram';
 
@@ -18,11 +19,44 @@ type FastpikSetting = {
     tenant_id: string | null;
 };
 
+type FastpikSubscription = {
+    user_id: string;
+    tier: string;
+    status: string;
+    start_date: string | null;
+    end_date: string | null;
+    trial_end_date: string | null;
+};
+
+type FastpikProfile = {
+    id: string;
+    full_name: string | null;
+};
+
+type SubscriptionPatch = {
+    trial_end_date?: string;
+    end_date?: string;
+};
+
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : 'Unknown server error';
+}
+
+function getLatestDate(...dates: Array<string | null | undefined>) {
+    const latest = dates.reduce<number>((max, date) => {
+        if (!date) return max;
+        const time = new Date(date).getTime();
+        return Number.isFinite(time) && time > max ? time : max;
+    }, 0);
+
+    return latest > 0 ? new Date(latest).toISOString() : null;
+}
+
 // GET - list users
 export async function GET() {
     try {
         // Get all auth users (paginated — Supabase defaults to 50 per page)
-        let authUsers: any[] = [];
+        let authUsers: User[] = [];
         let page = 1;
         while (true) {
             const { data: authData, error: authError } = await fastpikSupabase.auth.admin.listUsers({ page, perPage: 1000 });
@@ -34,13 +68,19 @@ export async function GET() {
         }
 
         // Get subscriptions, profiles, and tenant assignment data
-        const { data: subscriptions } = await fastpikSupabase.from('subscriptions').select('user_id, tier, status, end_date, trial_end_date');
+        const { data: subscriptions } = await fastpikSupabase.from('subscriptions').select('user_id, tier, status, start_date, end_date, trial_end_date');
         const { data: profiles } = await fastpikSupabase.from('profiles').select('id, full_name');
         const { data: settings } = await fastpikSupabase.from('settings').select('user_id, vendor_name, tenant_id');
         const { data: tenants } = await fastpikSupabase.from('tenants').select('id, name, domain, is_active');
 
-        const subMap = new Map(subscriptions?.map(s => [s.user_id, s]) || []);
-        const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+        const subMap = new Map((subscriptions || []).map((s) => {
+            const subscription = s as FastpikSubscription;
+            return [subscription.user_id, subscription] as const;
+        }));
+        const profileMap = new Map((profiles || []).map((p) => {
+            const profile = p as FastpikProfile;
+            return [profile.id, profile] as const;
+        }));
         const settingsMap = new Map((settings as FastpikSetting[] | null)?.map(s => [s.user_id, s]) || []);
         const tenantMap = new Map((tenants as FastpikTenant[] | null)?.map(t => [t.id, t]) || []);
 
@@ -58,6 +98,7 @@ export async function GET() {
                 tenantName: tenant?.name || null,
                 tenantDomain: tenant?.domain || null,
                 createdAt: user.created_at,
+                registeredSortAt: getLatestDate(user.email_confirmed_at, subscription?.start_date, user.created_at) || user.created_at,
                 tier: subscription?.tier || 'none',
                 status: subscription?.status || 'inactive',
                 expiresAt: subscription?.end_date || subscription?.trial_end_date || null,
@@ -66,12 +107,12 @@ export async function GET() {
             };
         });
 
-        formattedUsers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        formattedUsers.sort((a, b) => new Date(b.registeredSortAt).getTime() - new Date(a.registeredSortAt).getTime());
 
         return NextResponse.json({ success: true, users: formattedUsers });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Fastpik users GET error:', error);
-        return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, message: getErrorMessage(error) }, { status: 500 });
     }
 }
 
@@ -167,13 +208,14 @@ export async function POST(request: NextRequest) {
             message: 'Invitation sent! User will receive email to set their password.',
             user: { id: authData.user.id, email: authData.user.email, name },
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Fastpik users POST error:', error);
+        const message = getErrorMessage(error);
         await notifyAlert(
             `<b>⚠️ Fastpik Invite Error</b>\n\n` +
-            `❌ ${escapeTelegramHtml(error?.message || 'Unknown server error')}`
+            `❌ ${escapeTelegramHtml(message)}`
         );
-        return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, message }, { status: 500 });
     }
 }
 
@@ -190,9 +232,9 @@ export async function DELETE(request: NextRequest) {
         if (error) throw error;
 
         return NextResponse.json({ success: true, message: 'User deleted successfully' });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Fastpik users DELETE error:', error);
-        return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, message: getErrorMessage(error) }, { status: 500 });
     }
 }
 
@@ -281,7 +323,7 @@ export async function PATCH(request: NextRequest) {
                 .eq('user_id', userId)
                 .single();
 
-            const updateData: Record<string, any> = {};
+            const updateData: SubscriptionPatch = {};
             if (currentSub?.status === 'trial' || currentSub?.tier === 'free') {
                 updateData.trial_end_date = expiryDate;
             } else {
@@ -321,8 +363,8 @@ export async function PATCH(request: NextRequest) {
         }
 
         return NextResponse.json({ success: false, message: 'Invalid action' }, { status: 400 });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Fastpik users PATCH error:', error);
-        return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, message: getErrorMessage(error) }, { status: 500 });
     }
 }

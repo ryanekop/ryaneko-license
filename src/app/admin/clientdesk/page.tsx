@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { AdminToast } from '@/components/AdminToast';
 import { useLang } from '@/lib/providers';
 import { ClientDeskMaintenancePanel } from '@/components/ClientDeskMaintenancePanel';
 
@@ -14,6 +15,7 @@ interface UserData {
     tenantId: string | null;
     tenantName: string | null;
     createdAt: string;
+    registeredSortAt: string;
     tier: string;
     status: string;
     expiresAt: string | null;
@@ -48,6 +50,9 @@ interface BlocklistData {
     created_at: string;
     updated_at: string;
 }
+
+type SortMode = 'newest' | 'oldest' | 'expiresSoon' | 'expiresLatest';
+type ExpiryFilter = 'all' | 'expired' | 'active';
 
 // SVG Icons
 const ClipboardIcon = () => (
@@ -148,6 +153,21 @@ function isExpired(dateString: string | null) {
     return new Date(dateString) < new Date();
 }
 
+function getTime(dateString: string | null | undefined, fallback = 0) {
+    if (!dateString) return fallback;
+    const time = new Date(dateString).getTime();
+    return Number.isFinite(time) ? time : fallback;
+}
+
+function isUserExpired(user: UserData) {
+    return user.tier !== 'lifetime' && isExpired(user.expiresAt);
+}
+
+function getExpirySortTime(user: UserData) {
+    if (user.tier === 'lifetime' || !user.expiresAt) return Number.POSITIVE_INFINITY;
+    return getTime(user.expiresAt, Number.POSITIVE_INFINITY);
+}
+
 // Portal Dialog component
 function Dialog({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
     if (!open) return null;
@@ -172,10 +192,11 @@ export default function ClientDeskPage() {
     const [error, setError] = useState('');
     const [blocklistError, setBlocklistError] = useState('');
     const [toast, setToast] = useState<{ success: boolean; message: string } | null>(null);
-    const [sortAsc, setSortAsc] = useState(false);
+    const [sortMode, setSortMode] = useState<SortMode>('newest');
     const [searchQuery, setSearchQuery] = useState('');
     const [blocklistSearch, setBlocklistSearch] = useState('');
     const [filterTier, setFilterTier] = useState<string>('all');
+    const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
     const [activeTab, setActiveTab] = useState<'users' | 'blocklist' | 'maintenance'>('users');
 
     // Create form
@@ -298,13 +319,24 @@ export default function ClientDeskPage() {
                 if (u.tier !== filterTier) return false;
             }
         }
+        if (expiryFilter === 'expired' && !isUserExpired(u)) return false;
+        if (expiryFilter === 'active' && isUserExpired(u)) return false;
         return true;
     });
 
     const sortedUsers = [...filteredUsers].sort((a, b) => {
-        const da = new Date(a.createdAt).getTime();
-        const db = new Date(b.createdAt).getTime();
-        return sortAsc ? da - db : db - da;
+        if (sortMode === 'expiresSoon' || sortMode === 'expiresLatest') {
+            const expiryA = getExpirySortTime(a);
+            const expiryB = getExpirySortTime(b);
+            const aHasExpiry = Number.isFinite(expiryA);
+            const bHasExpiry = Number.isFinite(expiryB);
+            if (aHasExpiry !== bHasExpiry) return aHasExpiry ? -1 : 1;
+            if (expiryA !== expiryB) return sortMode === 'expiresSoon' ? expiryA - expiryB : expiryB - expiryA;
+        }
+
+        const da = getTime(a.registeredSortAt, getTime(a.createdAt));
+        const db = getTime(b.registeredSortAt, getTime(b.createdAt));
+        return sortMode === 'oldest' ? da - db : db - da;
     });
 
     const handleAddBlock = async (e: React.FormEvent) => {
@@ -513,15 +545,7 @@ export default function ClientDeskPage() {
 
     return (
         <div className="space-y-6 animate-fade-in">
-            {toast && (
-                <div className={`fixed right-4 top-4 z-[10000] px-4 py-2.5 rounded-xl border shadow-[var(--shadow-lg)] text-sm animate-fade-in ${
-                    toast.success
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                        : 'bg-danger/10 border-danger/20 text-danger'
-                }`}>
-                    {toast.message}
-                </div>
-            )}
+            <AdminToast toast={toast} />
 
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -534,12 +558,21 @@ export default function ClientDeskPage() {
                 <div className="flex items-center gap-2">
                     {activeTab !== 'maintenance' && (
                         <>
-                            <button
-                                onClick={() => setSortAsc(!sortAsc)}
-                                className="px-3 py-2 bg-bg-card border border-border rounded-lg text-xs font-medium text-fg cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 flex items-center gap-1.5"
-                            >
-                                <SortIcon /> {sortAsc ? t('list.sortOldest') : t('list.sortNewest')}
-                            </button>
+                            {activeTab === 'users' && <div className="relative">
+                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted">
+                                    <SortIcon />
+                                </span>
+                                <select
+                                    value={sortMode}
+                                    onChange={(e) => setSortMode(e.target.value as SortMode)}
+                                    className="h-9 pl-8 pr-3 bg-bg-card border border-border rounded-lg text-xs font-medium text-fg cursor-pointer hover:bg-bg-secondary transition-all focus:outline-none focus:ring-2 focus:ring-accent/20"
+                                >
+                                    <option value="newest">{t('userSort.newest')}</option>
+                                    <option value="oldest">{t('userSort.oldest')}</option>
+                                    <option value="expiresSoon">{t('userSort.expiresSoon')}</option>
+                                    <option value="expiresLatest">{t('userSort.expiresLatest')}</option>
+                                </select>
+                            </div>}
                             <button
                                 onClick={() => {
                                     if (activeTab === 'users') {
@@ -637,6 +670,31 @@ export default function ClientDeskPage() {
                 })}
             </div>}
 
+            {/* Expiry Filter */}
+            {activeTab === 'users' && <div className="flex flex-wrap gap-1.5">
+                {[
+                    { key: 'all', label: t('userFilter.expiryAll') },
+                    { key: 'expired', label: t('userFilter.expired') },
+                    { key: 'active', label: t('userFilter.active') },
+                ].map((f) => {
+                    const count = f.key === 'all'
+                        ? users.length
+                        : users.filter((u) => f.key === 'expired' ? isUserExpired(u) : !isUserExpired(u)).length;
+                    return (
+                        <button
+                            key={f.key}
+                            onClick={() => setExpiryFilter(f.key as ExpiryFilter)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all active:scale-95 ${expiryFilter === f.key
+                                ? 'bg-accent text-accent-fg shadow-sm'
+                                : 'bg-bg-card border border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
+                                }`}
+                        >
+                            {f.label} ({count})
+                        </button>
+                    );
+                })}
+            </div>}
+
             {/* Create Form */}
             {activeTab === 'users' && showCreate && (
                 <div className="bg-bg-card rounded-xl border border-border p-5 shadow-[var(--shadow)] animate-slide-up">
@@ -692,7 +750,7 @@ export default function ClientDeskPage() {
 
             {/* User Count */}
             {activeTab === 'users' && <div className="flex items-center gap-2 text-fg-muted text-sm">
-                <UsersIcon /> {t('clientdesk.userCount')}: <span className="font-semibold text-fg">{filteredUsers.length}</span>{filterTier !== 'all' && <span className="text-fg-muted"> / {users.length}</span>}
+                <UsersIcon /> {t('clientdesk.userCount')}: <span className="font-semibold text-fg">{filteredUsers.length}</span>{(filterTier !== 'all' || expiryFilter !== 'all') && <span className="text-fg-muted"> / {users.length}</span>}
             </div>}
 
             {/* Error */}
