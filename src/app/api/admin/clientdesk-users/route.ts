@@ -18,12 +18,33 @@ type ClientDeskProfile = {
 };
 
 type SubscriptionPatch = {
-    trial_end_date?: string;
-    end_date?: string;
+    trial_end_date?: string | null;
+    end_date?: string | null;
+    updated_at?: string;
 };
 
+type SubscriptionTier = 'free' | 'pro_monthly' | 'pro_quarterly' | 'pro_yearly' | 'lifetime';
+
+const VALID_TIERS: SubscriptionTier[] = ['free', 'pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
+const ADMIN_TRIAL_DAYS = 5;
+
 function getErrorMessage(error: unknown) {
+    if (typeof error === 'object' && error && 'message' in error) {
+        const message = (error as { message?: unknown }).message;
+        if (typeof message === 'string') return message;
+    }
     return error instanceof Error ? error.message : 'Unknown server error';
+}
+
+function getErrorPayload(error: unknown) {
+    const maybePostgrestError = error as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown };
+    return {
+        success: false,
+        message: getErrorMessage(error),
+        code: typeof maybePostgrestError.code === 'string' ? maybePostgrestError.code : undefined,
+        details: typeof maybePostgrestError.details === 'string' ? maybePostgrestError.details : undefined,
+        hint: typeof maybePostgrestError.hint === 'string' ? maybePostgrestError.hint : undefined,
+    };
 }
 
 function getLatestDate(...dates: Array<string | null | undefined>) {
@@ -34,6 +55,35 @@ function getLatestDate(...dates: Array<string | null | undefined>) {
     }, 0);
 
     return latest > 0 ? new Date(latest).toISOString() : null;
+}
+
+function parseTier(tier: unknown): SubscriptionTier | null {
+    return typeof tier === 'string' && VALID_TIERS.includes(tier as SubscriptionTier)
+        ? tier as SubscriptionTier
+        : null;
+}
+
+function getTierPeriod(tier: SubscriptionTier) {
+    const now = new Date();
+    const expiry = new Date(now);
+
+    if (tier === 'free') {
+        expiry.setDate(expiry.getDate() + ADMIN_TRIAL_DAYS);
+        return { startDate: now.toISOString(), endDate: null, trialEndDate: expiry.toISOString() };
+    }
+
+    if (tier === 'pro_monthly') expiry.setMonth(expiry.getMonth() + 1);
+    else if (tier === 'pro_quarterly') expiry.setMonth(expiry.getMonth() + 3);
+    else if (tier === 'pro_yearly') expiry.setFullYear(expiry.getFullYear() + 1);
+    else return { startDate: now.toISOString(), endDate: null, trialEndDate: null };
+
+    return { startDate: now.toISOString(), endDate: expiry.toISOString(), trialEndDate: null };
+}
+
+function parseDateInput(value: unknown) {
+    if (typeof value !== 'string') return null;
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 // GET - list users
@@ -244,56 +294,76 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ success: false, message: 'User ID is required' }, { status: 400 });
         }
 
+        const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
+        if (userError || !userData?.user) {
+            return NextResponse.json(
+                { success: false, message: userError?.message || 'Client Desk user not found' },
+                { status: 404 },
+            );
+        }
+
         if (action === 'set_expiry') {
-            const { data: currentSub } = await supabase
+            const parsedExpiryDate = parseDateInput(expiryDate);
+            if (!parsedExpiryDate) {
+                return NextResponse.json({ success: false, message: 'Valid expiry date is required' }, { status: 400 });
+            }
+
+            const { data: currentSub, error: currentSubError } = await supabase
                 .from('subscriptions')
                 .select('tier, status')
                 .eq('user_id', userId)
-                .single();
+                .maybeSingle();
+
+            if (currentSubError) throw currentSubError;
 
             const updateData: SubscriptionPatch = {};
             const sub = currentSub as Pick<ClientDeskSubscription, 'tier' | 'status'> | null;
-            if (sub?.status === 'trial' || sub?.tier === 'free') {
-                updateData.trial_end_date = expiryDate;
+            if (!sub || sub.status === 'trial' || sub.tier === 'free') {
+                updateData.trial_end_date = parsedExpiryDate;
+                updateData.end_date = null;
             } else {
-                updateData.end_date = expiryDate;
+                updateData.end_date = parsedExpiryDate;
             }
+            updateData.updated_at = new Date().toISOString();
 
-            const { error } = await supabase.from('subscriptions').update(updateData).eq('user_id', userId);
+            const { error } = sub
+                ? await supabase.from('subscriptions').update(updateData).eq('user_id', userId)
+                : await supabase.from('subscriptions').insert({
+                    user_id: userId,
+                    tier: 'free',
+                    status: 'trial',
+                    start_date: new Date().toISOString(),
+                    ...updateData,
+                });
             if (error) throw error;
 
             return NextResponse.json({ success: true, message: 'Expiry date updated' });
 
         } else if (action === 'change_tier') {
-            let endDate = null;
-            let trialEndDate = null;
-            const isTrial = tier === 'free';
-
-            if (tier !== 'lifetime') {
-                const expiry = new Date();
-                if (tier === 'free') { expiry.setDate(expiry.getDate() + 15); trialEndDate = expiry.toISOString(); }
-                else if (tier === 'pro_monthly') { expiry.setMonth(expiry.getMonth() + 1); endDate = expiry.toISOString(); }
-                else if (tier === 'pro_quarterly') { expiry.setMonth(expiry.getMonth() + 3); endDate = expiry.toISOString(); }
-                else if (tier === 'pro_yearly') { expiry.setFullYear(expiry.getFullYear() + 1); endDate = expiry.toISOString(); }
+            const nextTier = parseTier(tier);
+            if (!nextTier) {
+                return NextResponse.json({ success: false, message: 'Invalid tier' }, { status: 400 });
             }
 
+            const period = getTierPeriod(nextTier);
             const { error } = await supabase.from('subscriptions').upsert({
                 user_id: userId,
-                tier,
-                status: isTrial ? 'trial' : 'active',
-                start_date: new Date().toISOString(),
-                end_date: endDate,
-                trial_end_date: trialEndDate,
+                tier: nextTier,
+                status: nextTier === 'free' ? 'trial' : 'active',
+                start_date: period.startDate,
+                end_date: period.endDate,
+                trial_end_date: period.trialEndDate,
+                updated_at: new Date().toISOString(),
             }, { onConflict: 'user_id' });
 
             if (error) throw error;
 
-            return NextResponse.json({ success: true, message: `Tier changed to ${tier}` });
+            return NextResponse.json({ success: true, message: `Tier changed to ${nextTier}` });
         }
 
         return NextResponse.json({ success: false, message: 'Invalid action' }, { status: 400 });
     } catch (error: unknown) {
         console.error('Client Desk users PATCH error:', error);
-        return NextResponse.json({ success: false, message: getErrorMessage(error) }, { status: 500 });
+        return NextResponse.json(getErrorPayload(error), { status: 500 });
     }
 }

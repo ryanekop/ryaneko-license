@@ -33,6 +33,8 @@ interface TenantData {
 type SortMode = 'newest' | 'oldest' | 'expiresSoon' | 'expiresLatest';
 type ExpiryFilter = 'all' | 'expired' | 'active';
 
+const EDITABLE_TIERS = ['free', 'pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
+
 // SVG Icons
 const CameraIcon = () => (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -132,6 +134,10 @@ function getExpirySortTime(user: UserData) {
     return getTime(user.expiresAt, Number.POSITIVE_INFINITY);
 }
 
+function getEditableTier(tier: string) {
+    return EDITABLE_TIERS.includes(tier) ? tier : 'free';
+}
+
 // Portal Dialog component
 function Dialog({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
     if (!open) return null;
@@ -162,7 +168,7 @@ export default function FastpikPage() {
     const [showCreate, setShowCreate] = useState(false);
     const [createName, setCreateName] = useState('');
     const [createEmail, setCreateEmail] = useState('');
-    const [trialDays, setTrialDays] = useState('3');
+    const [trialDays, setTrialDays] = useState('5');
     const [createLoading, setCreateLoading] = useState(false);
     const [createResult, setCreateResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -627,7 +633,7 @@ export default function FastpikPage() {
                                                 <button
                                                     onClick={() => {
                                                         setEditUser(user);
-                                                        setSelectedTier(user.tier === 'free' ? 'free' : user.tier);
+                                                        setSelectedTier(getEditableTier(user.tier));
                                                         setExpiryDate(user.expiresAt ? new Date(user.expiresAt).toISOString().split('T')[0] : new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]);
                                                     }}
                                                     className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-blue-600 transition-all active:scale-90 flex items-center gap-1"
@@ -679,7 +685,7 @@ export default function FastpikPage() {
                                         <button
                                             onClick={() => {
                                                 setEditUser(user);
-                                                setSelectedTier(user.tier === 'free' ? 'free' : user.tier);
+                                                setSelectedTier(getEditableTier(user.tier));
                                                 setExpiryDate(user.expiresAt ? new Date(user.expiresAt).toISOString().split('T')[0] : new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]);
                                             }}
                                             className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-blue-600 transition-all active:scale-90 flex items-center gap-1"
@@ -759,7 +765,7 @@ export default function FastpikPage() {
                             onChange={(e) => setSelectedTier(e.target.value)}
                             className="flex-1 px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent/20"
                         >
-                            <option value="free">⏱️ Trial (15 hari)</option>
+                            <option value="free">⏱️ Trial (5 hari)</option>
                             <option value="pro_monthly">🔥 Pro Monthly</option>
                             <option value="pro_quarterly">🔥 Pro Quarterly</option>
                             <option value="pro_yearly">🔥 Pro Yearly</option>
