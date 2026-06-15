@@ -10,6 +10,8 @@ type ClientDeskSubscription = {
     start_date: string | null;
     end_date: string | null;
     trial_end_date: string | null;
+    plan: string | null;
+    duration: string | null;
 };
 
 type ClientDeskProfile = {
@@ -23,11 +25,17 @@ type SubscriptionPatch = {
     updated_at?: string;
 };
 
+type SubscriptionPlan = 'basic' | 'plus' | 'pro' | null;
+type SubscriptionDuration = 'monthly' | 'quarterly' | 'yearly' | 'lifetime' | null;
+
 type SubscriptionTier =
     | 'free'
     | 'basic_monthly'
     | 'basic_quarterly'
     | 'basic_yearly'
+    | 'plus_monthly'
+    | 'plus_quarterly'
+    | 'plus_yearly'
     | 'pro_monthly'
     | 'pro_quarterly'
     | 'pro_yearly'
@@ -38,6 +46,9 @@ const VALID_TIERS: SubscriptionTier[] = [
     'basic_monthly',
     'basic_quarterly',
     'basic_yearly',
+    'plus_monthly',
+    'plus_quarterly',
+    'plus_yearly',
     'pro_monthly',
     'pro_quarterly',
     'pro_yearly',
@@ -89,12 +100,20 @@ function getTierPeriod(tier: SubscriptionTier) {
         return { startDate: now.toISOString(), endDate: null, trialEndDate: expiry.toISOString() };
     }
 
-    if (tier === 'basic_monthly' || tier === 'pro_monthly') expiry.setMonth(expiry.getMonth() + 1);
-    else if (tier === 'basic_quarterly' || tier === 'pro_quarterly') expiry.setMonth(expiry.getMonth() + 3);
-    else if (tier === 'basic_yearly' || tier === 'pro_yearly') expiry.setFullYear(expiry.getFullYear() + 1);
+    if (tier === 'basic_monthly' || tier === 'plus_monthly' || tier === 'pro_monthly') expiry.setMonth(expiry.getMonth() + 1);
+    else if (tier === 'basic_quarterly' || tier === 'plus_quarterly' || tier === 'pro_quarterly') expiry.setMonth(expiry.getMonth() + 3);
+    else if (tier === 'basic_yearly' || tier === 'plus_yearly' || tier === 'pro_yearly') expiry.setFullYear(expiry.getFullYear() + 1);
     else return { startDate: now.toISOString(), endDate: null, trialEndDate: null };
 
     return { startDate: now.toISOString(), endDate: expiry.toISOString(), trialEndDate: null };
+}
+
+function getTierMetadata(tier: SubscriptionTier): { plan: SubscriptionPlan; duration: SubscriptionDuration } {
+    if (tier === 'free') return { plan: null, duration: null };
+    if (tier === 'lifetime') return { plan: null, duration: 'lifetime' };
+
+    const [plan, duration] = tier.split('_') as [Exclude<SubscriptionPlan, null>, Exclude<SubscriptionDuration, 'lifetime' | null>];
+    return { plan, duration };
 }
 
 function parseDateInput(value: unknown) {
@@ -121,7 +140,7 @@ export async function GET() {
         }
 
         // Get subscriptions and profiles
-        const { data: subscriptions } = await supabase.from('subscriptions').select('user_id, tier, status, start_date, end_date, trial_end_date');
+        const { data: subscriptions } = await supabase.from('subscriptions').select('user_id, tier, status, start_date, end_date, trial_end_date, plan, duration');
         const { data: profiles } = await supabase.from('profiles').select('id, full_name');
 
         const subMap = new Map((subscriptions || []).map((s) => {
@@ -144,6 +163,8 @@ export async function GET() {
                 registeredSortAt: getLatestDate(user.email_confirmed_at, subscription?.start_date, user.created_at) || user.created_at,
                 tier: subscription?.tier || 'none',
                 status: subscription?.status || 'inactive',
+                plan: subscription?.plan || null,
+                duration: subscription?.duration || null,
                 expiresAt: subscription?.end_date || subscription?.trial_end_date || null,
                 lastSignIn: user.last_sign_in_at || null,
                 emailConfirmed: !!user.email_confirmed_at,
@@ -363,9 +384,12 @@ export async function PATCH(request: NextRequest) {
             }
 
             const period = getTierPeriod(nextTier);
+            const metadata = getTierMetadata(nextTier);
             const { error } = await supabase.from('subscriptions').upsert({
                 user_id: userId,
                 tier: nextTier,
+                plan: metadata.plan,
+                duration: metadata.duration,
                 status: nextTier === 'free' ? 'trial' : 'active',
                 start_date: period.startDate,
                 end_date: period.endDate,

@@ -18,6 +18,8 @@ interface UserData {
     registeredSortAt: string;
     tier: string;
     status: string;
+    plan: string | null;
+    duration: string | null;
     expiresAt: string | null;
     lastSignIn: string | null;
     emailConfirmed: boolean;
@@ -53,12 +55,17 @@ interface BlocklistData {
 
 type SortMode = 'newest' | 'oldest' | 'expiresSoon' | 'expiresLatest';
 type ExpiryFilter = 'all' | 'expired' | 'active';
+type PackageFilter = 'all' | 'trial' | 'basic' | 'plus' | 'pro' | 'lifetime';
+type DurationFilter = 'all' | 'monthly' | 'quarterly' | 'yearly' | 'lifetime';
 
 const EDITABLE_TIERS = [
     'free',
     'basic_monthly',
     'basic_quarterly',
     'basic_yearly',
+    'plus_monthly',
+    'plus_quarterly',
+    'plus_yearly',
     'pro_monthly',
     'pro_quarterly',
     'pro_yearly',
@@ -128,28 +135,54 @@ const UnlockIcon = () => (
     </svg>
 );
 
-function getTierBadge(tier: string, status?: string) {
+function getPackageFromTier(tier: string, status?: string): PackageFilter | 'none' {
     if (tier === 'free' || status === 'trial') {
+        return 'trial';
+    }
+    if (tier === 'lifetime') return 'lifetime';
+    if (tier.startsWith('basic_')) return 'basic';
+    if (tier.startsWith('plus_')) return 'plus';
+    if (tier.startsWith('pro_')) return 'pro';
+    return 'none';
+}
+
+function getDurationFromTier(tier: string): DurationFilter | 'trial' | 'none' {
+    if (tier === 'free') return 'trial';
+    if (tier === 'lifetime') return 'lifetime';
+    if (tier.endsWith('_monthly')) return 'monthly';
+    if (tier.endsWith('_quarterly')) return 'quarterly';
+    if (tier.endsWith('_yearly')) return 'yearly';
+    return 'none';
+}
+
+function getTierBadge(tier: string, status?: string) {
+    const packageName = getPackageFromTier(tier, status);
+    if (packageName === 'trial') {
         return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300">⏱️ Trial</span>;
     }
-    switch (tier) {
-        case 'basic_monthly':
-            return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Basic Monthly</span>;
-        case 'basic_quarterly':
-            return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300">Basic Quarterly</span>;
-        case 'basic_yearly':
-            return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">Basic Yearly</span>;
-        case 'pro_monthly':
-            return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">🔥 Pro Monthly</span>;
-        case 'pro_quarterly':
-            return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">🔥 Pro Quarterly</span>;
-        case 'pro_yearly':
-            return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">🔥 Pro Yearly</span>;
-        case 'lifetime':
-            return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">👑 Lifetime</span>;
-        default:
-            return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">No Plan</span>;
+    if (packageName === 'basic') {
+        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Basic</span>;
     }
+    if (packageName === 'plus') {
+        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">Plus</span>;
+    }
+    if (packageName === 'pro') {
+        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">🔥 Pro</span>;
+    }
+    if (packageName === 'lifetime') {
+        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">👑 Lifetime</span>;
+    }
+    return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">No Plan</span>;
+}
+
+function formatDuration(tier: string) {
+    const duration = getDurationFromTier(tier);
+    if (duration === 'monthly') return 'Monthly';
+    if (duration === 'quarterly') return 'Quarterly';
+    if (duration === 'yearly') return 'Yearly';
+    if (duration === 'lifetime') return 'Lifetime';
+    if (duration === 'trial') return 'Trial';
+    return '—';
 }
 
 function formatDate(dateString: string | null) {
@@ -216,7 +249,8 @@ export default function ClientDeskPage() {
     const [sortMode, setSortMode] = useState<SortMode>('newest');
     const [searchQuery, setSearchQuery] = useState('');
     const [blocklistSearch, setBlocklistSearch] = useState('');
-    const [filterTier, setFilterTier] = useState<string>('all');
+    const [filterPackage, setFilterPackage] = useState<PackageFilter>('all');
+    const [filterDuration, setFilterDuration] = useState<DurationFilter>('all');
     const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
     const [activeTab, setActiveTab] = useState<'users' | 'blocklist' | 'maintenance'>('users');
 
@@ -333,12 +367,11 @@ export default function ClientDeskPage() {
             const q = searchQuery.toLowerCase();
             if (!u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false;
         }
-        if (filterTier !== 'all') {
-            if (filterTier === 'trial') {
-                if (!(u.tier === 'free' || u.status === 'trial')) return false;
-            } else {
-                if (u.tier !== filterTier) return false;
-            }
+        if (filterPackage !== 'all' && getPackageFromTier(u.tier, u.status) !== filterPackage) {
+            return false;
+        }
+        if (filterDuration !== 'all' && getDurationFromTier(u.tier) !== filterDuration) {
+            return false;
         }
         if (expiryFilter === 'expired' && !isUserExpired(u)) return false;
         if (expiryFilter === 'active' && isUserExpired(u)) return false;
@@ -665,25 +698,49 @@ export default function ClientDeskPage() {
             </div>
             ) : null}
 
-            {/* Tier Filter */}
-            {activeTab === 'users' && <div className="flex flex-wrap gap-1.5">
+            {/* Package Filter */}
+            {activeTab === 'users' && <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold text-fg-muted mr-1">{t('clientdesk.colPlan')}</span>
                 {[
-                    { key: 'all', label: `📋 ${t('clientdesk.filterAll')}` },
-                    { key: 'trial', label: '⏱️ Trial' },
-                    { key: 'basic_monthly', label: 'Basic Monthly' },
-                    { key: 'basic_quarterly', label: 'Basic Quarterly' },
-                    { key: 'basic_yearly', label: 'Basic Yearly' },
-                    { key: 'pro_monthly', label: 'Pro Monthly' },
-                    { key: 'pro_quarterly', label: 'Pro Quarterly' },
-                    { key: 'pro_yearly', label: 'Pro Yearly' },
-                    { key: 'lifetime', label: '👑 Lifetime' },
+                    { key: 'all' as const, label: `📋 ${t('clientdesk.filterAll')}` },
+                    { key: 'trial' as const, label: '⏱️ Trial' },
+                    { key: 'basic' as const, label: 'Basic' },
+                    { key: 'plus' as const, label: 'Plus' },
+                    { key: 'pro' as const, label: 'Pro' },
+                    { key: 'lifetime' as const, label: '👑 Lifetime' },
                 ].map((f) => {
-                    const count = f.key === 'all' ? users.length : users.filter(u => f.key === 'trial' ? (u.tier === 'free' || u.status === 'trial') : u.tier === f.key).length;
+                    const count = f.key === 'all' ? users.length : users.filter(u => getPackageFromTier(u.tier, u.status) === f.key).length;
                     return (
                         <button
                             key={f.key}
-                            onClick={() => setFilterTier(f.key)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all active:scale-95 ${filterTier === f.key
+                            onClick={() => setFilterPackage(f.key)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all active:scale-95 ${filterPackage === f.key
+                                ? 'bg-accent text-accent-fg shadow-sm'
+                                : 'bg-bg-card border border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
+                                }`}
+                        >
+                            {f.label} ({count})
+                        </button>
+                    );
+                })}
+            </div>}
+
+            {/* Duration Filter */}
+            {activeTab === 'users' && <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold text-fg-muted mr-1">{t('clientdesk.colDuration')}</span>
+                {[
+                    { key: 'all' as const, label: t('clientdesk.filterAll') },
+                    { key: 'monthly' as const, label: 'Monthly' },
+                    { key: 'quarterly' as const, label: 'Quarterly' },
+                    { key: 'yearly' as const, label: 'Yearly' },
+                    { key: 'lifetime' as const, label: 'Lifetime' },
+                ].map((f) => {
+                    const count = f.key === 'all' ? users.length : users.filter(u => getDurationFromTier(u.tier) === f.key).length;
+                    return (
+                        <button
+                            key={f.key}
+                            onClick={() => setFilterDuration(f.key)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all active:scale-95 ${filterDuration === f.key
                                 ? 'bg-accent text-accent-fg shadow-sm'
                                 : 'bg-bg-card border border-border text-fg-secondary hover:bg-bg-secondary hover:text-fg'
                                 }`}
@@ -774,7 +831,7 @@ export default function ClientDeskPage() {
 
             {/* User Count */}
             {activeTab === 'users' && <div className="flex items-center gap-2 text-fg-muted text-sm">
-                <UsersIcon /> {t('clientdesk.userCount')}: <span className="font-semibold text-fg">{filteredUsers.length}</span>{(filterTier !== 'all' || expiryFilter !== 'all') && <span className="text-fg-muted"> / {users.length}</span>}
+                <UsersIcon /> {t('clientdesk.userCount')}: <span className="font-semibold text-fg">{filteredUsers.length}</span>{(filterPackage !== 'all' || filterDuration !== 'all' || expiryFilter !== 'all') && <span className="text-fg-muted"> / {users.length}</span>}
             </div>}
 
             {/* Error */}
@@ -807,6 +864,7 @@ export default function ClientDeskPage() {
                                     <th className="px-4 py-3 font-medium">{t('clientdesk.colName')}</th>
                                     <th className="px-4 py-3 font-medium">{t('clientdesk.colEmail')}</th>
                                     <th className="px-4 py-3 font-medium">{t('clientdesk.colPlan')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('clientdesk.colDuration')}</th>
                                     <th className="px-4 py-3 font-medium">{t('clientdesk.colExpiry')}</th>
                                     <th className="px-4 py-3 font-medium">{t('clientdesk.colRegistered')}</th>
                                     <th className="px-4 py-3 font-medium">{t('clientdesk.colLastLogin')}</th>
@@ -820,6 +878,7 @@ export default function ClientDeskPage() {
                                         <td className="px-4 py-2.5 text-sm font-medium">{user.name}</td>
                                         <td className="px-4 py-2.5 text-sm">{user.email}</td>
                                         <td className="px-4 py-2.5">{getTierBadge(user.tier, user.status)}</td>
+                                        <td className="px-4 py-2.5 text-sm">{formatDuration(user.tier)}</td>
                                         <td className="px-4 py-2.5 text-sm">
                                             {user.tier === 'lifetime' ? (
                                                 <span className="text-amber-500 font-medium">∞ {t('clientdesk.never')}</span>
@@ -890,6 +949,7 @@ export default function ClientDeskPage() {
                                 </div>
                                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-border-light">
                                     <div className="text-xs text-fg-muted space-y-0.5">
+                                        <p>{t('clientdesk.colDuration')}: {formatDuration(user.tier)}</p>
                                         <p>{t('clientdesk.colExpiry')}: {user.tier === 'lifetime' ? <span className="text-amber-500">∞</span> : <span className={isExpired(user.expiresAt) ? 'text-danger' : ''}>{formatDate(user.expiresAt)}</span>}</p>
                                         <p>{t('clientdesk.colRegistered')}: {formatDate(user.createdAt)}</p>
                                         <p>{t('clientdesk.colLastLogin')}: {!user.emailConfirmed ? <span className="text-red-500 font-medium">⚠️ {t('clientdesk.unverified')}</span> : user.lastSignIn ? <span>{formatDateTime(user.lastSignIn)?.date} {formatDateTime(user.lastSignIn)?.time}</span> : '—'}</p>
@@ -1108,9 +1168,12 @@ export default function ClientDeskPage() {
                             <option value="basic_monthly">Basic Monthly</option>
                             <option value="basic_quarterly">Basic Quarterly</option>
                             <option value="basic_yearly">Basic Yearly</option>
-                            <option value="pro_monthly">Pro Monthly (Legacy)</option>
-                            <option value="pro_quarterly">Pro Quarterly (Legacy)</option>
-                            <option value="pro_yearly">Pro Yearly (Legacy)</option>
+                            <option value="plus_monthly">Plus Monthly</option>
+                            <option value="plus_quarterly">Plus Quarterly</option>
+                            <option value="plus_yearly">Plus Yearly</option>
+                            <option value="pro_monthly">Pro Monthly</option>
+                            <option value="pro_quarterly">Pro Quarterly</option>
+                            <option value="pro_yearly">Pro Yearly</option>
                             <option value="lifetime">👑 Lifetime</option>
                         </select>
                         <button
