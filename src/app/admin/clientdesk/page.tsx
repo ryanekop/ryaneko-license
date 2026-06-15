@@ -175,14 +175,24 @@ function getTierBadge(tier: string, status?: string) {
     return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">No Plan</span>;
 }
 
-function formatDuration(tier: string) {
+function getDurationBadge(tier: string) {
     const duration = getDurationFromTier(tier);
-    if (duration === 'monthly') return 'Monthly';
-    if (duration === 'quarterly') return 'Quarterly';
-    if (duration === 'yearly') return 'Yearly';
-    if (duration === 'lifetime') return 'Lifetime';
-    if (duration === 'trial') return 'Trial';
-    return '—';
+    if (duration === 'trial') {
+        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300">Trial</span>;
+    }
+    if (duration === 'monthly') {
+        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Monthly</span>;
+    }
+    if (duration === 'quarterly') {
+        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">Quarterly</span>;
+    }
+    if (duration === 'yearly') {
+        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">Yearly</span>;
+    }
+    if (duration === 'lifetime') {
+        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Lifetime</span>;
+    }
+    return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">—</span>;
 }
 
 function formatDate(dateString: string | null) {
@@ -878,7 +888,7 @@ export default function ClientDeskPage() {
                                         <td className="px-4 py-2.5 text-sm font-medium">{user.name}</td>
                                         <td className="px-4 py-2.5 text-sm">{user.email}</td>
                                         <td className="px-4 py-2.5">{getTierBadge(user.tier, user.status)}</td>
-                                        <td className="px-4 py-2.5 text-sm">{formatDuration(user.tier)}</td>
+                                        <td className="px-4 py-2.5">{getDurationBadge(user.tier)}</td>
                                         <td className="px-4 py-2.5 text-sm">
                                             {user.tier === 'lifetime' ? (
                                                 <span className="text-amber-500 font-medium">∞ {t('clientdesk.never')}</span>
@@ -949,7 +959,7 @@ export default function ClientDeskPage() {
                                 </div>
                                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-border-light">
                                     <div className="text-xs text-fg-muted space-y-0.5">
-                                        <p>{t('clientdesk.colDuration')}: {formatDuration(user.tier)}</p>
+                                        <p className="flex items-center gap-1.5">{t('clientdesk.colDuration')}: {getDurationBadge(user.tier)}</p>
                                         <p>{t('clientdesk.colExpiry')}: {user.tier === 'lifetime' ? <span className="text-amber-500">∞</span> : <span className={isExpired(user.expiresAt) ? 'text-danger' : ''}>{formatDate(user.expiresAt)}</span>}</p>
                                         <p>{t('clientdesk.colRegistered')}: {formatDate(user.createdAt)}</p>
                                         <p>{t('clientdesk.colLastLogin')}: {!user.emailConfirmed ? <span className="text-red-500 font-medium">⚠️ {t('clientdesk.unverified')}</span> : user.lastSignIn ? <span>{formatDateTime(user.lastSignIn)?.date} {formatDateTime(user.lastSignIn)?.time}</span> : '—'}</p>
