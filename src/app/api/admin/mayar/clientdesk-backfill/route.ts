@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
+import {
+    detectBundlePlanFromAmount,
+    detectClientDeskPlanFromAmount,
+    getDurationDays,
+    type ClientDeskTier,
+    type SubscriptionDuration,
+} from '@/lib/mayar-subscription-catalog';
 
-type ClientDeskPlanTier = 'pro_monthly' | 'pro_quarterly' | 'pro_yearly' | 'lifetime';
 type SubscriptionHistoryEventType = 'purchased' | 'renewed' | 'changed';
 
 type ExistingSubscription = {
     id: string;
     user_id: string;
-    tier: ClientDeskPlanTier | 'free' | string;
+    tier: ClientDeskTier | 'free' | string;
     status: 'active' | 'expired' | 'trial' | string;
     end_date: string | null;
     trial_end_date: string | null;
@@ -21,25 +27,6 @@ type BackfillResult = {
     action: 'inserted' | 'skipped' | 'error';
     reason?: string;
 };
-
-const CLIENT_DESK_PLAN_PRICES: Record<ClientDeskPlanTier, number> = {
-    pro_monthly: 39000,
-    pro_quarterly: 105000,
-    pro_yearly: 389000,
-    lifetime: 549000,
-};
-
-const CLIENT_DESK_MIN_PRICE_RATIO = 0.5;
-const CLIENT_DESK_AMOUNT_TOLERANCE = 1000;
-
-const BUNDLE_PLAN_PRICES: Record<ClientDeskPlanTier, number> = {
-    pro_monthly: 49000,
-    pro_quarterly: 129000,
-    pro_yearly: 489000,
-    lifetime: 749000,
-};
-
-const BUNDLE_AMOUNT_TOLERANCE = 2000;
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
     return NextResponse.json(body, { status });
@@ -118,74 +105,33 @@ function isBundleProduct(productName: string): boolean {
     return lowerName.includes('bundle') || lowerName.includes('bundling');
 }
 
-function validateClientDeskAmountForTier(tier: ClientDeskPlanTier, amount: number) {
-    const basePrice = CLIENT_DESK_PLAN_PRICES[tier];
-    const minAllowed = Math.floor(basePrice * CLIENT_DESK_MIN_PRICE_RATIO);
-    const maxAllowed = basePrice + CLIENT_DESK_AMOUNT_TOLERANCE;
-    return Number.isFinite(amount) && amount >= minAllowed && amount <= maxAllowed;
-}
-
-function detectClientDeskPlanFromAmount(amount: number): ClientDeskPlanTier | null {
-    const tiers: ClientDeskPlanTier[] = ['pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
-    const candidates = tiers
-        .map((tier) => ({
-            tier,
-            distance: Math.abs(amount - CLIENT_DESK_PLAN_PRICES[tier]),
-            isValid: validateClientDeskAmountForTier(tier, amount),
-        }))
-        .filter((candidate) => candidate.isValid);
-
-    candidates.sort((a, b) => a.distance - b.distance);
-    return candidates[0]?.tier || null;
-}
-
-function detectBundleTierFromAmount(amount: number): ClientDeskPlanTier | null {
-    const tiers: ClientDeskPlanTier[] = ['pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
-    const candidates = tiers
-        .map((tier) => ({
-            tier,
-            distance: Math.abs(amount - BUNDLE_PLAN_PRICES[tier]),
-        }))
-        .filter((candidate) => candidate.distance <= BUNDLE_AMOUNT_TOLERANCE);
-
-    candidates.sort((a, b) => a.distance - b.distance);
-    return candidates[0]?.tier || null;
-}
-
-function getClientDeskPlanDurationDays(tier: ClientDeskPlanTier): number {
-    if (tier === 'pro_monthly') return 30;
-    if (tier === 'pro_quarterly') return 90;
-    if (tier === 'pro_yearly') return 365;
-    return 0;
-}
-
-function resolveSubscriptionDates(tier: ClientDeskPlanTier, createdAt?: unknown) {
+function resolveSubscriptionDates(duration: SubscriptionDuration, createdAt?: unknown) {
     const startDate = typeof createdAt === 'string' || typeof createdAt === 'number'
         ? new Date(createdAt)
         : new Date();
     const normalizedStart = Number.isNaN(startDate.getTime()) ? new Date() : startDate;
-    let endDate: string | null = null;
-
-    if (tier !== 'lifetime') {
-        const end = new Date(normalizedStart);
-        end.setDate(end.getDate() + getClientDeskPlanDurationDays(tier));
-        endDate = end.toISOString();
-    }
+    const end = new Date(normalizedStart);
+    end.setDate(end.getDate() + getDurationDays(duration));
 
     return {
         startDate: normalizedStart.toISOString(),
-        endDate,
+        endDate: end.toISOString(),
     };
 }
 
 function resolveSubscriptionHistoryEvent(
     existing: ExistingSubscription | null,
-    nextTier: ClientDeskPlanTier
+    nextTier: ClientDeskTier
 ): SubscriptionHistoryEventType {
     const existingTier = existing?.tier || '';
     const hadPaidPlan =
         existing?.status === 'active' &&
-        (existingTier === 'lifetime' || existingTier.startsWith('pro_'));
+        (
+            existingTier === 'lifetime' ||
+            existingTier.startsWith('basic_') ||
+            existingTier.startsWith('plus_') ||
+            existingTier.startsWith('pro_')
+        );
 
     if (!hadPaidPlan) return 'purchased';
     return existingTier === nextTier ? 'renewed' : 'changed';
@@ -286,10 +232,13 @@ async function processClientDeskPayload(payload: any, dryRun: boolean): Promise<
         return { transactionId, email, productName, action: 'skipped', reason: 'not Client Desk product' };
     }
 
-    const tier = isBundle ? detectBundleTierFromAmount(amountNum) : detectClientDeskPlanFromAmount(amountNum);
-    if (!tier) {
+    const planMatch = isBundle
+        ? detectBundlePlanFromAmount(amountNum, productName)
+        : detectClientDeskPlanFromAmount(amountNum, productName);
+    if (!planMatch) {
         return { transactionId, email, productName, action: 'skipped', reason: `unknown amount ${amountNum}` };
     }
+    const { plan, duration, tier } = planMatch;
 
     const supabase = getClientDeskSupabase();
     if (await hasHistoryTransaction(supabase, transactionId)) {
@@ -307,13 +256,15 @@ async function processClientDeskPayload(payload: any, dryRun: boolean): Promise<
 
     const existing = await getSubscriptionByUserId(supabase, userId);
     const eventType = resolveSubscriptionHistoryEvent(existing, tier);
-    const { startDate, endDate } = resolveSubscriptionDates(tier, data?.createdAt || data?.updatedAt);
+    const { startDate, endDate } = resolveSubscriptionDates(duration, data?.createdAt || data?.updatedAt);
 
     const { data: subscriptionRow, error: upsertError } = await supabase
         .from('subscriptions')
         .upsert({
             user_id: userId,
             tier,
+            plan,
+            duration,
             status: 'active',
             start_date: startDate,
             end_date: endDate,
@@ -332,6 +283,8 @@ async function processClientDeskPayload(payload: any, dryRun: boolean): Promise<
             subscription_id: subscriptionRow?.id || existing?.id || null,
             event_type: eventType,
             tier,
+            plan,
+            duration,
             status: 'active',
             period_start: startDate,
             period_end: endDate,

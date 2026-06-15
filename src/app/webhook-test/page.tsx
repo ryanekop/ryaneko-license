@@ -48,20 +48,6 @@ const PRESETS = [
         },
     },
     {
-        label: 'Fastpik Lifetime',
-        payload: {
-            event: 'payment.received',
-            data: {
-                id: `TEST-FPK-${Date.now()}`,
-                productName: 'Fastpik Lifetime',
-                customerName: 'Test User',
-                customerEmail: 'test@example.com',
-                status: true,
-                amount: 349000,
-            },
-        },
-    },
-    {
         label: 'Client Desk Basic Monthly',
         payload: {
             event: 'payment.received',
@@ -104,27 +90,77 @@ const PRESETS = [
         },
     },
     {
-        label: 'Client Desk Lifetime (Voucher)',
+        label: 'Client Desk Plus Monthly',
         payload: {
             event: 'payment.received',
             data: {
                 id: `TEST-CD-${Date.now()}`,
-                productName: 'Client Desk Pro Access',
+                productName: 'Client Desk Plus Monthly',
                 customerName: 'Test User',
                 customerEmail: 'test@example.com',
                 status: true,
-                amount: 439200,
-                custom_field: [
-                    {
-                        name: 'Paket',
-                        value: 'Lifetime',
-                    },
-                ],
+                amount: 149000,
             },
         },
     },
     {
-        label: 'Client Desk Yearly (Below 50%)',
+        label: 'Client Desk Plus Quarterly',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-CD-${Date.now()}`,
+                productName: 'Client Desk Plus Quarterly',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 399000,
+            },
+        },
+    },
+    {
+        label: 'Client Desk Plus Yearly',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-CD-${Date.now()}`,
+                productName: 'Client Desk Plus Yearly',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 1489000,
+            },
+        },
+    },
+    {
+        label: 'Client Desk Pro Monthly',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-CD-${Date.now()}`,
+                productName: 'Client Desk Pro Monthly',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 249000,
+            },
+        },
+    },
+    {
+        label: 'Client Desk Pro Quarterly',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-CD-${Date.now()}`,
+                productName: 'Client Desk Pro Quarterly',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 699000,
+            },
+        },
+    },
+    {
+        label: 'Client Desk Pro Yearly',
         payload: {
             event: 'payment.received',
             data: {
@@ -133,7 +169,7 @@ const PRESETS = [
                 customerName: 'Test User',
                 customerEmail: 'test@example.com',
                 status: true,
-                amount: 150000,
+                amount: 2489000,
             },
         },
     },
@@ -180,16 +216,86 @@ const PRESETS = [
         },
     },
     {
-        label: 'Bundle Client Desk + Fastpik (Lifetime)',
+        label: 'Bundle Plus Client Desk + Fastpik (1 Bulan)',
         payload: {
             event: 'payment.received',
             data: {
                 id: `TEST-BND-${Date.now()}`,
-                productName: 'Bundling Client Desk & Fastpik',
+                productName: 'Bundling Plus Client Desk & Fastpik',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 169000,
+            },
+        },
+    },
+    {
+        label: 'Bundle Plus Client Desk + Fastpik (3 Bulan)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-BND-${Date.now()}`,
+                productName: 'Bundling Plus Client Desk & Fastpik',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 449000,
+            },
+        },
+    },
+    {
+        label: 'Bundle Plus Client Desk + Fastpik (12 Bulan)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-BND-${Date.now()}`,
+                productName: 'Bundling Plus Client Desk & Fastpik',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 1689000,
+            },
+        },
+    },
+    {
+        label: 'Bundle Pro Client Desk + Fastpik (1 Bulan)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-BND-${Date.now()}`,
+                productName: 'Bundling Pro Client Desk & Fastpik',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 269000,
+            },
+        },
+    },
+    {
+        label: 'Bundle Pro Client Desk + Fastpik (3 Bulan)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-BND-${Date.now()}`,
+                productName: 'Bundling Pro Client Desk & Fastpik',
                 customerName: 'Test User',
                 customerEmail: 'test@example.com',
                 status: true,
                 amount: 749000,
+            },
+        },
+    },
+    {
+        label: 'Bundle Pro Client Desk + Fastpik (12 Bulan)',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-BND-${Date.now()}`,
+                productName: 'Bundling Pro Client Desk & Fastpik',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 2689000,
             },
         },
     },
@@ -487,8 +593,9 @@ export default function WebhookTestPage() {
             } else {
                 addLog('error', `${res.status} — ${result.message || 'Error'}`, JSON.stringify(result, null, 2));
             }
-        } catch (err: any) {
-            addLog('error', `Parse/Network Error: ${err.message}`);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            addLog('error', `Parse/Network Error: ${message}`);
         }
         setSending(false);
     };
