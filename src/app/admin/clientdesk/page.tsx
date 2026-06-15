@@ -54,7 +54,16 @@ interface BlocklistData {
 type SortMode = 'newest' | 'oldest' | 'expiresSoon' | 'expiresLatest';
 type ExpiryFilter = 'all' | 'expired' | 'active';
 
-const EDITABLE_TIERS = ['free', 'pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
+const EDITABLE_TIERS = [
+    'free',
+    'basic_monthly',
+    'basic_quarterly',
+    'basic_yearly',
+    'pro_monthly',
+    'pro_quarterly',
+    'pro_yearly',
+    'lifetime',
+];
 
 // SVG Icons
 const ClipboardIcon = () => (
@@ -124,6 +133,12 @@ function getTierBadge(tier: string, status?: string) {
         return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300">⏱️ Trial</span>;
     }
     switch (tier) {
+        case 'basic_monthly':
+            return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Basic Monthly</span>;
+        case 'basic_quarterly':
+            return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300">Basic Quarterly</span>;
+        case 'basic_yearly':
+            return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">Basic Yearly</span>;
         case 'pro_monthly':
             return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">🔥 Pro Monthly</span>;
         case 'pro_quarterly':
@@ -655,9 +670,12 @@ export default function ClientDeskPage() {
                 {[
                     { key: 'all', label: `📋 ${t('clientdesk.filterAll')}` },
                     { key: 'trial', label: '⏱️ Trial' },
-                    { key: 'pro_monthly', label: '🔥 Monthly' },
-                    { key: 'pro_quarterly', label: '🔥 Quarterly' },
-                    { key: 'pro_yearly', label: '🔥 Yearly' },
+                    { key: 'basic_monthly', label: 'Basic Monthly' },
+                    { key: 'basic_quarterly', label: 'Basic Quarterly' },
+                    { key: 'basic_yearly', label: 'Basic Yearly' },
+                    { key: 'pro_monthly', label: 'Pro Monthly' },
+                    { key: 'pro_quarterly', label: 'Pro Quarterly' },
+                    { key: 'pro_yearly', label: 'Pro Yearly' },
                     { key: 'lifetime', label: '👑 Lifetime' },
                 ].map((f) => {
                     const count = f.key === 'all' ? users.length : users.filter(u => f.key === 'trial' ? (u.tier === 'free' || u.status === 'trial') : u.tier === f.key).length;
@@ -1087,9 +1105,12 @@ export default function ClientDeskPage() {
                             className="flex-1 px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent/20"
                         >
                             <option value="free">⏱️ Trial (5 hari)</option>
-                            <option value="pro_monthly">🔥 Pro Monthly</option>
-                            <option value="pro_quarterly">🔥 Pro Quarterly</option>
-                            <option value="pro_yearly">🔥 Pro Yearly</option>
+                            <option value="basic_monthly">Basic Monthly</option>
+                            <option value="basic_quarterly">Basic Quarterly</option>
+                            <option value="basic_yearly">Basic Yearly</option>
+                            <option value="pro_monthly">Pro Monthly (Legacy)</option>
+                            <option value="pro_quarterly">Pro Quarterly (Legacy)</option>
+                            <option value="pro_yearly">Pro Yearly (Legacy)</option>
                             <option value="lifetime">👑 Lifetime</option>
                         </select>
                         <button

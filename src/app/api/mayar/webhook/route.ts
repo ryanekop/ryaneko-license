@@ -133,7 +133,9 @@ function isClientDeskProduct(productName: string): boolean {
     return clientDeskKeywords.some(keyword => lowerName.includes(keyword));
 }
 
-type ClientDeskPlanTier = 'pro_monthly' | 'pro_quarterly' | 'pro_yearly' | 'lifetime';
+type DurationPlanTier = 'pro_monthly' | 'pro_quarterly' | 'pro_yearly' | 'lifetime';
+type BasicClientDeskTier = 'basic_monthly' | 'basic_quarterly' | 'basic_yearly';
+type ClientDeskPlanTier = BasicClientDeskTier | DurationPlanTier;
 type SubscriptionHistoryEventType = 'purchased' | 'renewed' | 'changed';
 
 type ExistingSubscription = {
@@ -155,6 +157,9 @@ function isClientDeskFastpikBundle(productName: string): boolean {
 }
 
 const CLIENT_DESK_PLAN_PRICES: Record<ClientDeskPlanTier, number> = {
+    basic_monthly: 49000,
+    basic_quarterly: 129000,
+    basic_yearly: 489000,
     pro_monthly: 39000,
     pro_quarterly: 105000,
     pro_yearly: 389000,
@@ -164,7 +169,7 @@ const CLIENT_DESK_PLAN_PRICES: Record<ClientDeskPlanTier, number> = {
 const CLIENT_DESK_MIN_PRICE_RATIO = 0.5;
 const CLIENT_DESK_AMOUNT_TOLERANCE = 1000;
 
-const FASTPIK_TIER_PRICE_POINTS: Record<ClientDeskPlanTier, number[]> = {
+const FASTPIK_TIER_PRICE_POINTS: Record<DurationPlanTier, number[]> = {
     pro_monthly: [15000],
     pro_quarterly: [39000],
     pro_yearly: [109650, 149000],
@@ -174,6 +179,9 @@ const FASTPIK_TIER_PRICE_POINTS: Record<ClientDeskPlanTier, number[]> = {
 const FASTPIK_AMOUNT_TOLERANCE = 1000;
 
 const BUNDLE_PLAN_PRICES: Record<ClientDeskPlanTier, number> = {
+    basic_monthly: 69000,
+    basic_quarterly: 189000,
+    basic_yearly: 689000,
     pro_monthly: 49000,
     pro_quarterly: 129000,
     pro_yearly: 489000,
@@ -184,7 +192,10 @@ const BUNDLE_AMOUNT_TOLERANCE = 2000;
 
 function validateClientDeskAmountForTier(tier: ClientDeskPlanTier, amount: number) {
     const basePrice = CLIENT_DESK_PLAN_PRICES[tier];
-    const minAllowed = Math.floor(basePrice * CLIENT_DESK_MIN_PRICE_RATIO);
+    const isBasicTier = tier.startsWith('basic_');
+    const minAllowed = isBasicTier
+        ? basePrice - CLIENT_DESK_AMOUNT_TOLERANCE
+        : Math.floor(basePrice * CLIENT_DESK_MIN_PRICE_RATIO);
     const maxAllowed = basePrice + CLIENT_DESK_AMOUNT_TOLERANCE;
     const isValid = Number.isFinite(amount) && amount >= minAllowed && amount <= maxAllowed;
 
@@ -255,7 +266,15 @@ function formatAmountIdr(value: unknown): string {
 function detectClientDeskPlanFromAmount(amount: number): ClientDeskPlanTier | null {
     if (!Number.isFinite(amount)) return null;
 
-    const tiers: ClientDeskPlanTier[] = ['pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
+    const tiers: ClientDeskPlanTier[] = [
+        'basic_monthly',
+        'basic_quarterly',
+        'basic_yearly',
+        'pro_monthly',
+        'pro_quarterly',
+        'pro_yearly',
+        'lifetime',
+    ];
     const validCandidates = tiers
         .map((tier) => {
             const validation = validateClientDeskAmountForTier(tier, amount);
@@ -278,7 +297,15 @@ function detectClientDeskPlanFromAmount(amount: number): ClientDeskPlanTier | nu
 function detectBundleTierFromAmount(amount: number): ClientDeskPlanTier | null {
     if (!Number.isFinite(amount)) return null;
 
-    const tiers: ClientDeskPlanTier[] = ['pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
+    const tiers: ClientDeskPlanTier[] = [
+        'basic_monthly',
+        'basic_quarterly',
+        'basic_yearly',
+        'pro_monthly',
+        'pro_quarterly',
+        'pro_yearly',
+        'lifetime',
+    ];
     const candidates = tiers
         .map((tier) => ({
             tier,
@@ -298,7 +325,7 @@ function detectBundleTierFromAmount(amount: number): ClientDeskPlanTier | null {
 function detectFastpikPlanFromAmount(amount: number): ClientDeskPlanTier | null {
     if (!Number.isFinite(amount)) return null;
 
-    const tiers: ClientDeskPlanTier[] = ['pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
+    const tiers: DurationPlanTier[] = ['pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
     const candidates = tiers
         .flatMap((tier) =>
             FASTPIK_TIER_PRICE_POINTS[tier].map((pricePoint) => ({
@@ -318,10 +345,17 @@ function detectFastpikPlanFromAmount(amount: number): ClientDeskPlanTier | null 
 }
 
 function getClientDeskPlanDurationDays(tier: ClientDeskPlanTier): number {
-    if (tier === 'pro_monthly') return 30;
-    if (tier === 'pro_quarterly') return 90;
-    if (tier === 'pro_yearly') return 365;
+    if (tier === 'basic_monthly' || tier === 'pro_monthly') return 30;
+    if (tier === 'basic_quarterly' || tier === 'pro_quarterly') return 90;
+    if (tier === 'basic_yearly' || tier === 'pro_yearly') return 365;
     return 0;
+}
+
+function mapClientDeskTierToFastpikTier(tier: ClientDeskPlanTier): DurationPlanTier {
+    if (tier === 'basic_monthly') return 'pro_monthly';
+    if (tier === 'basic_quarterly') return 'pro_quarterly';
+    if (tier === 'basic_yearly') return 'pro_yearly';
+    return tier;
 }
 
 function isPaymentSuccess(rawStatus: unknown): boolean {
@@ -413,7 +447,7 @@ function hasActivePaidSubscription(existing: ExistingSubscription | null, now = 
 
     const existingTier = existing.tier || '';
     if (existingTier === 'lifetime') return true;
-    if (!existingTier.startsWith('pro_') || !existing.end_date) return false;
+    if (!(existingTier.startsWith('basic_') || existingTier.startsWith('pro_')) || !existing.end_date) return false;
 
     const endDate = new Date(existing.end_date);
     return !Number.isNaN(endDate.getTime()) && endDate.getTime() > now.getTime();
@@ -978,7 +1012,8 @@ async function handleClientDeskSubscription(
             `📧 ${tg(email)}\n` +
             `💰 Rp ${formatAmountIdr(amount)}\n` +
             `🔎 Detection: amount-only\n` +
-            `📝 Rule: min 50% of base price, max base + tolerance\n` +
+            `📝 Expected Basic: 49k / 129k / 489k (±${CLIENT_DESK_AMOUNT_TOLERANCE.toLocaleString('id-ID')})\n` +
+            `📝 Legacy Pro/Lifetime still supported with discount tolerance\n` +
             `🧾 Order: ${tg(transactionId)}`
         );
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
@@ -1194,7 +1229,8 @@ async function handleBundleSubscription(
             `👤 ${tg(name)}\n` +
             `📧 ${tg(email)}\n` +
             `💰 Amount: Rp ${formatAmountIdr(amount)}\n` +
-            `📝 Expected: 49k / 129k / 489k / 749k (±${BUNDLE_AMOUNT_TOLERANCE.toLocaleString('id-ID')})\n` +
+            `📝 Expected Basic bundle: 69k / 189k / 689k (±${BUNDLE_AMOUNT_TOLERANCE.toLocaleString('id-ID')})\n` +
+            `📝 Legacy bundle Pro/Lifetime still supported\n` +
             `🧾 Order: ${tg(transactionId)}`
         );
         return jsonResponse('Success', `Unknown bundle amount: ${amountNum}`);
@@ -1237,6 +1273,7 @@ async function handleBundleSubscription(
         return jsonResponse('Error', 'User ID error', 500);
     }
 
+    const fastpikPlanTier = mapClientDeskTierToFastpikTier(planTier);
     const [clientDeskResult, fastpikResult] = await Promise.all([
         upsertBundleSubscription({
             app: 'clientdesk',
@@ -1253,7 +1290,7 @@ async function handleBundleSubscription(
             app: 'fastpik',
             supabase: fastpikSupabase,
             userId: fastpikUserId,
-            tier: planTier,
+            tier: fastpikPlanTier,
             transactionId,
             amount: amountNum,
             email,

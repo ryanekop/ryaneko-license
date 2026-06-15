@@ -23,9 +23,26 @@ type SubscriptionPatch = {
     updated_at?: string;
 };
 
-type SubscriptionTier = 'free' | 'pro_monthly' | 'pro_quarterly' | 'pro_yearly' | 'lifetime';
+type SubscriptionTier =
+    | 'free'
+    | 'basic_monthly'
+    | 'basic_quarterly'
+    | 'basic_yearly'
+    | 'pro_monthly'
+    | 'pro_quarterly'
+    | 'pro_yearly'
+    | 'lifetime';
 
-const VALID_TIERS: SubscriptionTier[] = ['free', 'pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
+const VALID_TIERS: SubscriptionTier[] = [
+    'free',
+    'basic_monthly',
+    'basic_quarterly',
+    'basic_yearly',
+    'pro_monthly',
+    'pro_quarterly',
+    'pro_yearly',
+    'lifetime',
+];
 const ADMIN_TRIAL_DAYS = 5;
 
 function getErrorMessage(error: unknown) {
@@ -72,9 +89,9 @@ function getTierPeriod(tier: SubscriptionTier) {
         return { startDate: now.toISOString(), endDate: null, trialEndDate: expiry.toISOString() };
     }
 
-    if (tier === 'pro_monthly') expiry.setMonth(expiry.getMonth() + 1);
-    else if (tier === 'pro_quarterly') expiry.setMonth(expiry.getMonth() + 3);
-    else if (tier === 'pro_yearly') expiry.setFullYear(expiry.getFullYear() + 1);
+    if (tier === 'basic_monthly' || tier === 'pro_monthly') expiry.setMonth(expiry.getMonth() + 1);
+    else if (tier === 'basic_quarterly' || tier === 'pro_quarterly') expiry.setMonth(expiry.getMonth() + 3);
+    else if (tier === 'basic_yearly' || tier === 'pro_yearly') expiry.setFullYear(expiry.getFullYear() + 1);
     else return { startDate: now.toISOString(), endDate: null, trialEndDate: null };
 
     return { startDate: now.toISOString(), endDate: expiry.toISOString(), trialEndDate: null };

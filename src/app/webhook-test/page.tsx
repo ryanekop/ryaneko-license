@@ -62,16 +62,44 @@ const PRESETS = [
         },
     },
     {
-        label: 'Client Desk Pro Quarterly',
+        label: 'Client Desk Basic Monthly',
         payload: {
             event: 'payment.received',
             data: {
                 id: `TEST-CD-${Date.now()}`,
-                productName: 'Client Desk Pro Quarterly',
+                productName: 'Client Desk Basic Monthly',
                 customerName: 'Test User',
                 customerEmail: 'test@example.com',
                 status: true,
-                amount: 105000,
+                amount: 49000,
+            },
+        },
+    },
+    {
+        label: 'Client Desk Basic Quarterly',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-CD-${Date.now()}`,
+                productName: 'Client Desk Basic Quarterly',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 129000,
+            },
+        },
+    },
+    {
+        label: 'Client Desk Basic Yearly',
+        payload: {
+            event: 'payment.received',
+            data: {
+                id: `TEST-CD-${Date.now()}`,
+                productName: 'Client Desk Basic Yearly',
+                customerName: 'Test User',
+                customerEmail: 'test@example.com',
+                status: true,
+                amount: 489000,
             },
         },
     },
@@ -110,44 +138,44 @@ const PRESETS = [
         },
     },
     {
-        label: 'Bundle Client Desk + Fastpik (1 Bulan)',
+        label: 'Bundle Basic Client Desk + Fastpik (1 Bulan)',
         payload: {
             event: 'payment.received',
             data: {
                 id: `TEST-BND-${Date.now()}`,
-                productName: 'Bundling Client Desk & Fastpik',
+                productName: 'Bundling Basic Client Desk & Fastpik',
                 customerName: 'Test User',
                 customerEmail: 'test@example.com',
                 status: true,
-                amount: 49000,
+                amount: 69000,
             },
         },
     },
     {
-        label: 'Bundle Client Desk + Fastpik (3 Bulan)',
+        label: 'Bundle Basic Client Desk + Fastpik (3 Bulan)',
         payload: {
             event: 'payment.received',
             data: {
                 id: `TEST-BND-${Date.now()}`,
-                productName: 'Bundling Client Desk & Fastpik',
+                productName: 'Bundling Basic Client Desk & Fastpik',
                 customerName: 'Test User',
                 customerEmail: 'test@example.com',
                 status: true,
-                amount: 129000,
+                amount: 189000,
             },
         },
     },
     {
-        label: 'Bundle Client Desk + Fastpik (12 Bulan)',
+        label: 'Bundle Basic Client Desk + Fastpik (12 Bulan)',
         payload: {
             event: 'payment.received',
             data: {
                 id: `TEST-BND-${Date.now()}`,
-                productName: 'Bundling Client Desk & Fastpik',
+                productName: 'Bundling Basic Client Desk & Fastpik',
                 customerName: 'Test User',
                 customerEmail: 'test@example.com',
                 status: true,
-                amount: 489000,
+                amount: 689000,
             },
         },
     },
