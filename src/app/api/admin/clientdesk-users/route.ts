@@ -43,7 +43,7 @@ const VALID_TIERS: SubscriptionTier[] = [
     'pro_yearly',
     'lifetime',
 ];
-const ADMIN_TRIAL_DAYS = 5;
+const ADMIN_TRIAL_DAYS = 7;
 
 function getErrorMessage(error: unknown) {
     if (typeof error === 'object' && error && 'message' in error) {
@@ -163,7 +163,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
     try {
         const supabase = getClientDeskSupabase();
-        const { name, email, trialDays = 5 } = await request.json();
+        const { name, email, trialDays = ADMIN_TRIAL_DAYS } = await request.json();
         const safeName = escapeTelegramHtml(name);
         const safeEmail = escapeTelegramHtml(email);
 

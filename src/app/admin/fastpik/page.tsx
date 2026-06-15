@@ -168,7 +168,7 @@ export default function FastpikPage() {
     const [showCreate, setShowCreate] = useState(false);
     const [createName, setCreateName] = useState('');
     const [createEmail, setCreateEmail] = useState('');
-    const [trialDays, setTrialDays] = useState('5');
+    const [trialDays, setTrialDays] = useState('7');
     const [createLoading, setCreateLoading] = useState(false);
     const [createResult, setCreateResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -765,7 +765,7 @@ export default function FastpikPage() {
                             onChange={(e) => setSelectedTier(e.target.value)}
                             className="flex-1 px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent/20"
                         >
-                            <option value="free">⏱️ Trial (5 hari)</option>
+                            <option value="free">⏱️ Trial (7 hari)</option>
                             <option value="pro_monthly">🔥 Pro Monthly</option>
                             <option value="pro_quarterly">🔥 Pro Quarterly</option>
                             <option value="pro_yearly">🔥 Pro Yearly</option>

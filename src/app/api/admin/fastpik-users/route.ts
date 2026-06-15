@@ -42,7 +42,7 @@ type SubscriptionPatch = {
 type SubscriptionTier = 'free' | 'pro_monthly' | 'pro_quarterly' | 'pro_yearly' | 'lifetime';
 
 const VALID_TIERS: SubscriptionTier[] = ['free', 'pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
-const ADMIN_TRIAL_DAYS = 5;
+const ADMIN_TRIAL_DAYS = 7;
 
 function getErrorMessage(error: unknown) {
     if (typeof error === 'object' && error && 'message' in error) {
