@@ -170,9 +170,9 @@ const CLIENT_DESK_MIN_PRICE_RATIO = 0.5;
 const CLIENT_DESK_AMOUNT_TOLERANCE = 1000;
 
 const FASTPIK_TIER_PRICE_POINTS: Record<DurationPlanTier, number[]> = {
-    pro_monthly: [15000],
-    pro_quarterly: [39000],
-    pro_yearly: [109650, 149000],
+    pro_monthly: [29000, 15000],
+    pro_quarterly: [79000, 39000],
+    pro_yearly: [289000, 109650, 149000],
     lifetime: [349000],
 };
 
@@ -322,7 +322,7 @@ function detectBundleTierFromAmount(amount: number): ClientDeskPlanTier | null {
     return candidates[0].tier;
 }
 
-function detectFastpikPlanFromAmount(amount: number): ClientDeskPlanTier | null {
+export function detectFastpikPlanFromAmount(amount: number): ClientDeskPlanTier | null {
     if (!Number.isFinite(amount)) return null;
 
     const tiers: DurationPlanTier[] = ['pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
@@ -811,7 +811,7 @@ async function handleFastpikSubscription(
             `👤 ${tg(name)}\n` +
             `📧 ${tg(email)}\n` +
             `💰 Rp ${formatAmountIdr(amount)}\n` +
-            `📝 Expected: 15k / 39k / 109.650 / 149k / 349k (±${FASTPIK_AMOUNT_TOLERANCE.toLocaleString('id-ID')})\n` +
+            `📝 Expected: 29k / 79k / 289k (legacy: 15k / 39k / 109.650 / 149k / 349k, ±${FASTPIK_AMOUNT_TOLERANCE.toLocaleString('id-ID')})\n` +
             `🧾 Order: ${tg(transactionId)}`
         );
         return jsonResponse('Success', `Unknown amount: ${amountNum}`);
