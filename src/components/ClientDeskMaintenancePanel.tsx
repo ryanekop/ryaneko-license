@@ -55,17 +55,17 @@ const ANNOUNCEMENT_KIND_OPTIONS: Array<{
     {
         value: 'maintenance',
         label: 'Maintenance',
-        description: 'Merah, statis, untuk website lock atau jadwal maintenance.',
+        description: 'Merah, statis, full maintenance lock dan redirect ke halaman maintenance.',
     },
     {
         value: 'warning',
         label: 'Warning',
-        description: 'Kuning, running text, untuk peringatan penting.',
+        description: 'Kuning, running text, bisa diclose user, tidak routing ke halaman maintenance.',
     },
     {
         value: 'announcement',
         label: 'Pengumuman',
-        description: 'Hijau, running text, untuk info produk atau promo.',
+        description: 'Hijau, running text, bisa diclose user, tidak routing ke halaman maintenance.',
     },
 ];
 
@@ -111,6 +111,7 @@ function formatJakarta(value: string | null) {
 }
 
 function isActive(settings: MaintenanceSettings) {
+    if (settings.announcement_kind !== 'maintenance') return false;
     const now = Date.now();
     if (settings.mode === 'on') return true;
     if (settings.mode !== 'scheduled' || !settings.start_at || !settings.end_at) {
@@ -125,6 +126,13 @@ function isAnnouncementActive(settings: MaintenanceSettings) {
 }
 
 function resolveStatus(settings: MaintenanceSettings) {
+    if (
+        settings.announcement_kind !== 'maintenance' &&
+        settings.announcement_enabled &&
+        isAnnouncementActive(settings)
+    ) {
+        return { label: 'Banner aktif (tanpa routing)', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
+    }
     if (settings.mode === 'off' && isAnnouncementActive(settings)) {
         return { label: 'Banner aktif', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
     }
@@ -141,18 +149,18 @@ function normalizeAnnouncementKind(value: unknown): AnnouncementKind {
 function resolveBannerPreview(settings: MaintenanceSettings) {
     if (settings.announcement_kind === 'warning') {
         return {
-            label: 'Warning - kuning, running text',
+            label: 'Warning - kuning, running text, bisa diclose, tanpa routing maintenance',
             className: 'border-yellow-400 bg-yellow-300 text-yellow-950',
         };
     }
     if (settings.announcement_kind === 'announcement') {
         return {
-            label: 'Pengumuman - hijau, running text',
+            label: 'Pengumuman - hijau, running text, bisa diclose, tanpa routing maintenance',
             className: 'border-emerald-500 bg-emerald-500 text-white',
         };
     }
     return {
-        label: 'Maintenance - merah, statis',
+        label: 'Maintenance - merah, statis, full lock dan redirect',
         className: 'border-red-600 bg-red-600 text-white',
     };
 }
@@ -246,6 +254,9 @@ export function ClientDeskMaintenancePanel() {
                     <div>
                         <h3 className="text-lg font-semibold text-fg">Maintenance Control</h3>
                         <p className="mt-1 text-sm text-fg-muted">Global Client Desk lock and announcement.</p>
+                        <p className="mt-1 text-xs text-fg-muted">
+                            Only Maintenance type can route Client Desk to the maintenance page. Warning and Pengumuman stay as dismissible banners.
+                        </p>
                     </div>
                     <div className="flex items-center gap-2">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${status.className}`}>
