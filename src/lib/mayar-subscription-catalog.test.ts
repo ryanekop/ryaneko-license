@@ -8,7 +8,7 @@ import {
     detectClientDeskPlanFromAmount,
     detectFastpikPlanFromAmount,
     mapDurationToFastpikTier,
-} from './mayar-subscription-catalog';
+} from './mayar-subscription-catalog.ts';
 
 test('resolves all active Fastpik prices', () => {
     for (const entry of FASTPIK_PRICE_CATALOG) {

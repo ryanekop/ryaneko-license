@@ -1,5 +1,15 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Subscription plan-change cron
+
+Apply `migration/add-clientdesk-subscription-plan-changes.sql` to the Client Desk Supabase project, then configure `SUBSCRIPTION_CRON_SECRET`.
+
+Run the protected endpoint every minute on the VPS:
+
+```cron
+* * * * * /root/ryaneko-license/scripts/run-subscription-plan-change-cron.sh >/dev/null
+```
+
 ## Getting Started
 
 First, run the development server:

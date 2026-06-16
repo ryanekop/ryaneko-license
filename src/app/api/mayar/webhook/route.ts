@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getFastpikSupabase } from '@/lib/fastpik-supabase';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
@@ -21,6 +22,18 @@ import {
     type FastpikTier,
     type SubscriptionDuration,
 } from '@/lib/mayar-subscription-catalog';
+import {
+    calculateImmediateSubscriptionPeriod,
+    calculateScheduledSubscriptionPeriod,
+    classifyClientDeskChange,
+    createFallbackValuation,
+    getDurationLabel,
+    getPlanFromTier,
+    type ClientDeskPriceSource,
+    type ImmediateSubscriptionPeriod,
+    type SubscriptionChangeKind,
+    type SubscriptionValuation,
+} from '@/lib/subscription-billing';
 import type {
     MayarWebhookPayload,
     MayarOrderData,
@@ -150,6 +163,7 @@ function isClientDeskProduct(productName: string): boolean {
 
 type SubscriptionTier = ClientDeskTier | FastpikTier;
 type SubscriptionHistoryEventType = 'purchased' | 'renewed' | 'changed';
+type SubscriptionHistoryStatus = 'active' | 'scheduled';
 
 type ExistingSubscription = {
     id: string;
@@ -295,6 +309,19 @@ function formatSubscriptionPeriodTelegramLines(period: ResolvedSubscriptionPerio
     );
 }
 
+function formatImmediateBillingTelegramLines(period: ImmediateSubscriptionPeriod): string {
+    return (
+        `📅 Berlaku dari: ${tg(formatTelegramDate(period.startDate))}\n` +
+        `📅 Berlaku sampai: ${tg(formatTelegramDate(period.endDate))}\n` +
+        (period.kind === 'upgrade'
+            ? `💳 Kredit paket lama: Rp ${formatAmountIdr(period.remainingCredit)}\n` +
+            `🎁 Bonus waktu: ${tg(getDurationLabel(period.bonusDurationMs))}\n`
+            : period.previousEndDate
+                ? '➕ Durasi ditambahkan dari masa aktif sebelumnya\n'
+                : '')
+    );
+}
+
 function resolveCombinedSubscriptionEvent(
     events: Array<SubscriptionHistoryEventType | null | undefined>
 ): SubscriptionHistoryEventType {
@@ -329,7 +356,11 @@ function resolveSubscriptionHistoryEvent(
     const hadPaidPlan = hasActivePaidSubscription(existing);
 
     if (!hadPaidPlan) return 'purchased';
-    return existingTier === nextTier ? 'renewed' : 'changed';
+    const existingPlan = getPlanFromTier(existingTier);
+    const nextPlan = getPlanFromTier(nextTier);
+    return existingTier === nextTier || (existingPlan && existingPlan === nextPlan)
+        ? 'renewed'
+        : 'changed';
 }
 
 async function hasTransactionInSubscriptionHistory(supabase: any, transactionId: string): Promise<boolean> {
@@ -359,6 +390,7 @@ async function insertSubscriptionHistory(params: {
     amount: number;
     transactionId: string;
     metadata: Record<string, unknown>;
+    status?: SubscriptionHistoryStatus;
 }) {
     const {
         supabase,
@@ -373,12 +405,13 @@ async function insertSubscriptionHistory(params: {
         amount,
         transactionId,
         metadata,
+        status = 'active',
     } = params;
 
     const alreadyExists = await hasTransactionInSubscriptionHistory(supabase, transactionId);
-    if (alreadyExists) return false;
+    if (alreadyExists) return null;
 
-    const { error } = await supabase
+    const { data, error } = await supabase
         .from('subscription_history')
         .insert({
             user_id: userId,
@@ -386,22 +419,24 @@ async function insertSubscriptionHistory(params: {
             event_type: eventType,
             tier,
             ...(plan && duration ? { plan, duration } : {}),
-            status: 'active',
+            status,
             period_start: periodStart,
             period_end: periodEnd,
             amount,
             currency: 'IDR',
             transaction_id: transactionId,
             metadata,
-        });
+        })
+        .select('id')
+        .single();
 
     if (error) {
         const duplicateCode = (error as { code?: string }).code;
-        if (duplicateCode === '23505') return false;
+        if (duplicateCode === '23505') return null;
         throw new Error(`[Mayar Webhook] Subscription history insert failed: ${error.message}`);
     }
 
-    return true;
+    return data?.id as string | null;
 }
 
 async function hasTransactionInSubscriptions(supabase: any, transactionId: string): Promise<boolean> {
@@ -425,6 +460,101 @@ async function getSubscriptionByUserId(supabase: any, userId: string) {
         .eq('user_id', userId)
         .maybeSingle();
     return data as ExistingSubscription | null;
+}
+
+function isClientDeskTier(tier: string): tier is ClientDeskTier {
+    return (
+        tier.startsWith('basic_') ||
+        tier.startsWith('plus_') ||
+        tier.startsWith('pro_')
+    ) && (
+        tier.endsWith('_monthly') ||
+        tier.endsWith('_quarterly') ||
+        tier.endsWith('_yearly')
+    );
+}
+
+async function getClientDeskValuation(
+    supabase: SupabaseClient,
+    existing: ExistingSubscription | null,
+): Promise<SubscriptionValuation | null> {
+    if (!existing?.end_date || !isClientDeskTier(existing.tier)) return null;
+
+    const { data, error } = await supabase
+        .from('subscription_history')
+        .select('metadata, period_start, period_end')
+        .eq('user_id', existing.user_id)
+        .eq('status', 'active')
+        .eq('tier', existing.tier)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        console.error('[Mayar Webhook] Failed to load subscription valuation:', error);
+    }
+
+    const metadata = data?.metadata && typeof data.metadata === 'object'
+        ? data.metadata as Record<string, unknown>
+        : null;
+    const billing = metadata?.billing && typeof metadata.billing === 'object'
+        ? metadata.billing as Record<string, unknown>
+        : null;
+    const value = Number(billing?.entitlementValue);
+    const startsAt = typeof billing?.entitlementStartsAt === 'string'
+        ? billing.entitlementStartsAt
+        : data?.period_start;
+    const endsAt = typeof billing?.entitlementEndsAt === 'string'
+        ? billing.entitlementEndsAt
+        : data?.period_end;
+    const priceSource = billing?.priceSource === 'bundle' ? 'bundle' : 'standalone';
+
+    if (Number.isFinite(value) && value > 0 && startsAt && endsAt) {
+        return { value, startsAt, endsAt, priceSource };
+    }
+
+    return createFallbackValuation({
+        tier: existing.tier,
+        endDate: existing.end_date,
+    });
+}
+
+async function getScheduledPlanChangeTail(supabase: SupabaseClient, userId: string): Promise<string | null> {
+    const { data, error } = await supabase
+        .from('subscription_plan_changes')
+        .select('end_at')
+        .eq('user_id', userId)
+        .eq('status', 'scheduled')
+        .order('end_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) throw new Error(`[Mayar Webhook] Failed to load scheduled plan changes: ${error.message}`);
+    return data?.end_at || null;
+}
+
+function buildBillingMetadata(params: {
+    kind: SubscriptionChangeKind;
+    priceSource: ClientDeskPriceSource;
+    purchasePrice: number;
+    remainingCredit?: number;
+    bonusDurationMs?: number;
+    entitlementValue: number;
+    entitlementDurationMs: number;
+    entitlementStartsAt: string;
+    entitlementEndsAt: string;
+}) {
+    return {
+        changeKind: params.kind,
+        priceSource: params.priceSource,
+        purchasePrice: params.purchasePrice,
+        remainingCredit: params.remainingCredit || 0,
+        bonusDurationMs: params.bonusDurationMs || 0,
+        entitlementValue: params.entitlementValue,
+        entitlementDurationMs: params.entitlementDurationMs,
+        entitlementStartsAt: params.entitlementStartsAt,
+        entitlementEndsAt: params.entitlementEndsAt,
+    };
 }
 
 async function findUserIdByEmail(supabase: any, email: string): Promise<string | null> {
@@ -543,10 +673,167 @@ async function ensureBundleUser(params: {
     return userId;
 }
 
+type ClientDeskSubscriptionResult = {
+    updated: boolean;
+    scheduled: boolean;
+    manualReview: boolean;
+    eventType: SubscriptionHistoryEventType | null;
+    immediatePeriod: ImmediateSubscriptionPeriod | null;
+    scheduledPeriod: ReturnType<typeof calculateScheduledSubscriptionPeriod> | null;
+};
+
+async function processClientDeskSubscription(params: {
+    supabase: SupabaseClient;
+    userId: string;
+    tier: ClientDeskTier;
+    plan: ClientDeskPlan;
+    duration: SubscriptionDuration;
+    transactionId: string;
+    amount: number;
+    priceSource: ClientDeskPriceSource;
+    metadata: Record<string, unknown>;
+}): Promise<ClientDeskSubscriptionResult> {
+    const {
+        supabase,
+        userId,
+        tier,
+        plan,
+        duration,
+        transactionId,
+        amount,
+        priceSource,
+        metadata,
+    } = params;
+
+    const { error: dueError } = await supabase.rpc('apply_due_subscription_plan_changes');
+    if (dueError) {
+        throw new Error(`[Mayar Webhook] Failed to apply due plan changes before purchase: ${dueError.message}`);
+    }
+
+    const existing = await getSubscriptionByUserId(supabase, userId);
+    if (existing?.tier === 'lifetime') {
+        return {
+            updated: false,
+            scheduled: false,
+            manualReview: true,
+            eventType: null,
+            immediatePeriod: null,
+            scheduledPeriod: null,
+        };
+    }
+
+    const activePaid = hasActivePaidSubscription(existing);
+    const kind = classifyClientDeskChange(existing?.tier || null, tier, activePaid);
+
+    if (kind === 'downgrade') {
+        const scheduledTail = await getScheduledPlanChangeTail(supabase, userId);
+        const queueAfter = [existing?.end_date, scheduledTail]
+            .filter((value): value is string => Boolean(value))
+            .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+        if (!queueAfter) throw new Error('[Mayar Webhook] Active downgrade has no queue start date');
+
+        const period = calculateScheduledSubscriptionPeriod({ nextTier: tier, priceSource, queueAfter });
+        const billing = buildBillingMetadata({
+            kind,
+            priceSource,
+            purchasePrice: period.purchasePrice,
+            entitlementValue: period.entitlementValue,
+            entitlementDurationMs: period.entitlementDurationMs,
+            entitlementStartsAt: period.startDate,
+            entitlementEndsAt: period.endDate,
+        });
+        const { data, error } = await supabase.rpc('schedule_clientdesk_subscription_change', {
+            p_user_id: userId,
+            p_tier: tier,
+            p_plan: plan,
+            p_duration: duration,
+            p_effective_at: period.startDate,
+            p_end_at: period.endDate,
+            p_amount: amount,
+            p_transaction_id: transactionId,
+            p_expected_tier: existing?.tier || null,
+            p_expected_end_date: existing?.end_date || null,
+            p_metadata: { ...metadata, billing },
+        });
+        if (error) throw new Error(`[Mayar Webhook] Failed to schedule downgrade: ${error.message}`);
+        const scheduled = Array.isArray(data) ? data[0] : null;
+        const actualPeriod = scheduled?.scheduled_effective_at && scheduled?.scheduled_end_at
+            ? {
+                ...period,
+                startDate: scheduled.scheduled_effective_at as string,
+                endDate: scheduled.scheduled_end_at as string,
+            }
+            : period;
+
+        return {
+            updated: true,
+            scheduled: true,
+            manualReview: false,
+            eventType: 'changed',
+            immediatePeriod: null,
+            scheduledPeriod: actualPeriod,
+        };
+    }
+
+    const valuation = activePaid ? await getClientDeskValuation(supabase, existing) : null;
+    const period = calculateImmediateSubscriptionPeriod({
+        kind,
+        nextTier: tier,
+        priceSource,
+        existingEndDate: existing?.end_date,
+        existingValuation: valuation,
+    });
+    const eventType: SubscriptionHistoryEventType =
+        kind === 'purchase' ? 'purchased' :
+            kind === 'renewal' ? 'renewed' :
+                'changed';
+    const previousEndMs = period.previousEndDate ? new Date(period.previousEndDate).getTime() : null;
+    const queueShiftMs = previousEndMs === null
+        ? 0
+        : new Date(period.endDate).getTime() - previousEndMs;
+    const billing = buildBillingMetadata({
+        kind,
+        priceSource,
+        purchasePrice: period.purchasePrice,
+        remainingCredit: period.remainingCredit,
+        bonusDurationMs: period.bonusDurationMs,
+        entitlementValue: period.entitlementValue,
+        entitlementDurationMs: period.entitlementDurationMs,
+        entitlementStartsAt: period.startDate,
+        entitlementEndsAt: period.endDate,
+    });
+    const { error } = await supabase.rpc('apply_clientdesk_subscription_purchase', {
+        p_user_id: userId,
+        p_tier: tier,
+        p_plan: plan,
+        p_duration: duration,
+        p_start_date: period.startDate,
+        p_end_date: period.endDate,
+        p_amount: amount,
+        p_transaction_id: transactionId,
+        p_event_type: eventType,
+        p_queue_shift_ms: Math.round(queueShiftMs),
+        p_expected_tier: existing?.tier || null,
+        p_expected_end_date: existing?.end_date || null,
+        p_metadata: { ...metadata, billing },
+    });
+    if (error) throw new Error(`[Mayar Webhook] Failed to apply subscription purchase: ${error.message}`);
+
+    return {
+        updated: true,
+        scheduled: false,
+        manualReview: false,
+        eventType,
+        immediatePeriod: period,
+        scheduledPeriod: null,
+    };
+}
+
 type BundleSubscriptionUpsertResult = {
     updated: boolean;
     eventType: SubscriptionHistoryEventType | null;
     period: ResolvedSubscriptionPeriod | null;
+    clientDeskResult?: ClientDeskSubscriptionResult;
 };
 
 async function upsertBundleSubscription(params: {
@@ -581,6 +868,49 @@ async function upsertBundleSubscription(params: {
     }
     if (await hasTransactionInSubscriptions(supabase, transactionId)) {
         return { updated: false, eventType: null, period: null };
+    }
+
+    if (app === 'clientdesk') {
+        if (!plan || !duration || !isClientDeskTier(tier)) {
+            throw new Error('[Bundle Webhook] Invalid Client Desk bundle tier metadata');
+        }
+        const result = await processClientDeskSubscription({
+            supabase,
+            userId,
+            tier,
+            plan,
+            duration,
+            transactionId,
+            amount,
+            priceSource: 'bundle',
+            metadata: {
+                source: 'bundle_webhook',
+                app,
+                productName,
+                customerEmail: email,
+                customerName: name,
+            },
+        });
+        return {
+            updated: result.updated,
+            eventType: result.eventType,
+            period: result.immediatePeriod
+                ? {
+                    startDate: result.immediatePeriod.startDate,
+                    baseDate: result.immediatePeriod.startDate,
+                    endDate: result.immediatePeriod.endDate,
+                    extendedFromActive: Boolean(result.immediatePeriod.previousEndDate),
+                }
+                : result.scheduledPeriod
+                    ? {
+                        startDate: result.scheduledPeriod.startDate,
+                        baseDate: result.scheduledPeriod.startDate,
+                        endDate: result.scheduledPeriod.endDate,
+                        extendedFromActive: false,
+                    }
+                    : null,
+            clientDeskResult: result,
+        };
     }
 
     const existing = await getSubscriptionByUserId(supabase, userId);
@@ -622,7 +952,7 @@ async function upsertBundleSubscription(params: {
         amount,
         transactionId,
         metadata: {
-            source: app === 'clientdesk' ? 'bundle_webhook' : 'bundle_webhook_fastpik',
+            source: 'bundle_webhook_fastpik',
             app,
             productName,
             customerEmail: email,
@@ -983,45 +1313,15 @@ async function handleClientDeskSubscription(
         return jsonResponse('Error', 'User ID error', 500);
     }
 
-    const existingSubscription = await getSubscriptionByUserId(clientdeskSupabase, userId);
-    const historyEventType = resolveSubscriptionHistoryEvent(existingSubscription, planTier);
-
-    const period = resolveSubscriptionDates(planTier, existingSubscription);
-
-    // Upsert subscription
-    const { data: subscriptionRow, error: upsertError } = await clientdeskSupabase
-        .from('subscriptions')
-        .upsert({
-            user_id: userId,
-            tier: planTier,
-            plan,
-            duration,
-            status: 'active',
-            start_date: period.startDate,
-            end_date: period.endDate,
-            mayar_transaction_id: transactionId,
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' })
-        .select('id')
-        .single();
-
-    if (upsertError) {
-        console.error('[Client Desk Webhook] Subscription upsert error:', upsertError);
-        throw upsertError;
-    }
-
-    await insertSubscriptionHistory({
+    const result = await processClientDeskSubscription({
         supabase: clientdeskSupabase,
         userId,
-        subscriptionId: subscriptionRow?.id || existingSubscription?.id || null,
-        eventType: historyEventType,
         tier: planTier,
         plan,
         duration,
-        periodStart: period.baseDate,
-        periodEnd: period.endDate,
-        amount: amountNum,
         transactionId,
+        amount: amountNum,
+        priceSource: 'standalone',
         metadata: {
             source: 'clientdesk_webhook',
             productName,
@@ -1030,20 +1330,51 @@ async function handleClientDeskSubscription(
         },
     });
 
+    if (result.manualReview) {
+        await notifyAlert(
+            `<b>⚠️ Client Desk: Manual Subscription Review</b>\n\n` +
+            `Existing plan is lifetime and was not changed automatically.\n` +
+            `📦 Requested: ${tg(planTier)}\n` +
+            `👤 ${tg(name)}\n` +
+            `📧 ${tg(email)}\n` +
+            `💰 Rp ${formatAmountIdr(amountNum)}\n` +
+            `🧾 Order: ${tg(transactionId)}`
+        );
+        return jsonResponse('Success', 'Lifetime subscription requires manual review');
+    }
+
+    const historyEventType = result.eventType || 'purchased';
+    const periodLines = result.scheduledPeriod
+        ? (
+            `⏳ Dijadwalkan mulai: ${tg(formatTelegramDate(result.scheduledPeriod.startDate))}\n` +
+            `📅 Berlaku sampai: ${tg(formatTelegramDate(result.scheduledPeriod.endDate))}\n`
+        )
+        : result.immediatePeriod
+            ? formatImmediateBillingTelegramLines(result.immediatePeriod)
+            : '';
+    const notificationTitle = result.scheduled
+        ? 'Client Desk Plan Change Scheduled'
+        : getSubscriptionNotificationTitle('Client Desk', historyEventType);
+
     // Telegram notification
     await notifyPurchase(
-        `<b>${getSubscriptionNotificationTitle('Client Desk', historyEventType)}!</b>\n\n` +
+        `<b>${notificationTitle}!</b>\n\n` +
         `📦 ${tg(planTier)}\n` +
         `👤 ${tg(name)}\n` +
         `📧 ${tg(email)}\n` +
         formatMayarSourceTelegramLine(mayarSource) +
         `💰 Rp ${formatAmountIdr(amountNum)}\n` +
-        formatSubscriptionPeriodTelegramLines(period) +
+        periodLines +
         `🔑 Transaction: ${tg(transactionId)}`
     );
 
-    console.log(`[Client Desk Webhook] ✅ Subscription activated: ${email} -> ${planTier}`);
-    return jsonResponse('Success', `Client Desk subscription activated: ${planTier}`);
+    console.log(`[Client Desk Webhook] ✅ Subscription processed: ${email} -> ${planTier}`);
+    return jsonResponse(
+        'Success',
+        result.scheduled
+            ? `Client Desk plan change scheduled: ${planTier}`
+            : `Client Desk subscription activated: ${planTier}`,
+    );
 }
 
 // =============================================
@@ -1181,6 +1512,18 @@ async function handleBundleSubscription(
         }),
     ]);
 
+    if (clientDeskResult.clientDeskResult?.manualReview) {
+        await notifyAlert(
+            `<b>⚠️ Bundle: Manual Client Desk Review</b>\n\n` +
+            `Existing Client Desk plan is lifetime and was not changed automatically.\n` +
+            `📦 Requested: ${tg(planTier)}\n` +
+            `👤 ${tg(name)}\n` +
+            `📧 ${tg(email)}\n` +
+            `💰 Rp ${formatAmountIdr(amountNum)}\n` +
+            `🧾 Order: ${tg(transactionId)}`
+        );
+    }
+
     if (!clientDeskResult.updated && !fastpikResult.updated) {
         console.log(`[Bundle Webhook] Duplicate upsert skipped by transaction: ${transactionId}`);
         return jsonResponse('Success', `Duplicate transaction ignored: ${transactionId}`);
@@ -1190,8 +1533,35 @@ async function handleBundleSubscription(
         clientDeskResult.eventType,
         fastpikResult.eventType,
     ]);
+    const bundleNotificationTitle = clientDeskResult.clientDeskResult?.scheduled
+        ? 'Bundle Plan Change Scheduled'
+        : getSubscriptionNotificationTitle('Bundle', bundleEventType);
 
     const formatBundleResultLine = (label: string, result: BundleSubscriptionUpsertResult) => {
+        if (result.clientDeskResult?.manualReview) {
+            return `⚠️ ${label}: lifetime, perlu review manual\n`;
+        }
+        if (result.clientDeskResult?.scheduledPeriod) {
+            return (
+                `⏳ ${label}: Plan Change Scheduled\n` +
+                `   Mulai: ${tg(formatTelegramDate(result.clientDeskResult.scheduledPeriod.startDate))}\n` +
+                `   Sampai: ${tg(formatTelegramDate(result.clientDeskResult.scheduledPeriod.endDate))}\n`
+            );
+        }
+        if (result.clientDeskResult?.immediatePeriod) {
+            const immediate = result.clientDeskResult.immediatePeriod;
+            return (
+                `✅ ${label}: ${tg(getSubscriptionEventLabel(result.eventType || 'purchased'))}\n` +
+                `   Berlaku dari: ${tg(formatTelegramDate(immediate.startDate))}\n` +
+                `   Berlaku sampai: ${tg(formatTelegramDate(immediate.endDate))}\n` +
+                (immediate.kind === 'upgrade'
+                    ? `   Kredit: Rp ${formatAmountIdr(immediate.remainingCredit)}\n` +
+                    `   Bonus: ${tg(getDurationLabel(immediate.bonusDurationMs))}\n`
+                    : immediate.previousEndDate
+                        ? '   Ditambahkan dari masa aktif sebelumnya\n'
+                        : '')
+            );
+        }
         if (!result.updated || !result.eventType || !result.period) {
             return `✅ ${label}: skip\n`;
         }
@@ -1205,7 +1575,7 @@ async function handleBundleSubscription(
     };
 
     await notifyPurchase(
-        `<b>${getSubscriptionNotificationTitle('Bundle', bundleEventType)}!</b>\n\n` +
+        `<b>${bundleNotificationTitle}!</b>\n\n` +
         `📦 Client Desk + Fastpik\n` +
         `🎯 Tier: ${tg(planTier)}\n` +
         `👤 ${tg(name)}\n` +
