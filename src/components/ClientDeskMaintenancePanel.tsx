@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 
 type MaintenanceMode = 'off' | 'on' | 'scheduled';
+type AnnouncementKind = 'maintenance' | 'warning' | 'announcement';
 
 type MaintenanceSettings = {
     mode: MaintenanceMode;
@@ -14,6 +15,8 @@ type MaintenanceSettings = {
     message_en: string;
     announcement_message_id: string;
     announcement_message_en: string;
+    announcement_kind: AnnouncementKind;
+    announcement_href: string;
     updated_at?: string;
 };
 
@@ -28,19 +31,43 @@ const DEFAULT_PREVIEW_URLS: PreviewUrls = {
 };
 
 const DEFAULT_SETTINGS: MaintenanceSettings = {
-    mode: 'scheduled',
+    mode: 'off',
     announcement_enabled: true,
-    start_at: '2026-05-15T17:00:00.000Z',
-    end_at: '2026-05-15T21:00:00.000Z',
+    start_at: null,
+    end_at: '2026-06-30T17:00:00.000Z',
     message_id:
-        'Client Desk akan maintenance pada tanggal 16 Mei 2026 pukul 00.00-04.00 WIB. Selama periode ini, website tidak dapat digunakan sementara. Silakan coba kembali setelah maintenance selesai.',
+        'Client Desk sedang menampilkan pengumuman fitur terbaru.',
     message_en:
-        'Client Desk will be under maintenance on 16 May 2026 from 00.00-04.00 WIB. During this period, the website will be temporarily unavailable. Please try again after maintenance is complete.',
+        'Client Desk is showing the latest feature announcement.',
     announcement_message_id:
-        'Pengumuman: Website akan maintenance pada 16 Mei 2026 pukul 00.00-04.00 WIB. Selama periode tersebut, website tidak dapat digunakan sementara.',
+        'Pengumuman: Portal Tim/Freelance, Payment Gateway, dan Auto Sync Spreadsheet gratis diakses sampai 30 Juni 2026 pukul 23.59 WIB. Setelah itu minimal gunakan paket Plus.',
     announcement_message_en:
-        'Announcement: The website will be under maintenance on 16 May 2026 from 00.00-04.00 WIB. During that period, the website will be temporarily unavailable.',
+        'Announcement: Team/Freelance Portal, Payment Gateway, and Auto Sync Spreadsheet are free to access until 30 June 2026 at 23:59 WIB. After that, at least the Plus plan is required.',
+    announcement_kind: 'warning',
+    announcement_href: '/pricing#plus',
 };
+
+const ANNOUNCEMENT_KIND_OPTIONS: Array<{
+    value: AnnouncementKind;
+    label: string;
+    description: string;
+}> = [
+    {
+        value: 'maintenance',
+        label: 'Maintenance',
+        description: 'Merah, statis, untuk website lock atau jadwal maintenance.',
+    },
+    {
+        value: 'warning',
+        label: 'Warning',
+        description: 'Kuning, running text, untuk peringatan penting.',
+    },
+    {
+        value: 'announcement',
+        label: 'Pengumuman',
+        description: 'Hijau, running text, untuk info produk atau promo.',
+    },
+];
 
 function jakartaInputValue(value: string | null) {
     if (!value) return '';
@@ -92,11 +119,42 @@ function isActive(settings: MaintenanceSettings) {
     return now >= new Date(settings.start_at).getTime() && now < new Date(settings.end_at).getTime();
 }
 
+function isAnnouncementActive(settings: MaintenanceSettings) {
+    if (!settings.announcement_enabled || !settings.end_at) return false;
+    return Date.now() <= new Date(settings.end_at).getTime();
+}
+
 function resolveStatus(settings: MaintenanceSettings) {
+    if (settings.mode === 'off' && isAnnouncementActive(settings)) {
+        return { label: 'Banner aktif', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
+    }
     if (settings.mode === 'off') return { label: 'Off', className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' };
     if (settings.mode === 'on') return { label: 'Maintenance aktif', className: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300' };
     if (isActive(settings)) return { label: 'Scheduled aktif sekarang', className: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300' };
     return { label: 'Scheduled', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
+}
+
+function normalizeAnnouncementKind(value: unknown): AnnouncementKind {
+    return value === 'warning' || value === 'announcement' ? value : 'maintenance';
+}
+
+function resolveBannerPreview(settings: MaintenanceSettings) {
+    if (settings.announcement_kind === 'warning') {
+        return {
+            label: 'Warning - kuning, running text',
+            className: 'border-yellow-400 bg-yellow-300 text-yellow-950',
+        };
+    }
+    if (settings.announcement_kind === 'announcement') {
+        return {
+            label: 'Pengumuman - hijau, running text',
+            className: 'border-emerald-500 bg-emerald-500 text-white',
+        };
+    }
+    return {
+        label: 'Maintenance - merah, statis',
+        className: 'border-red-600 bg-red-600 text-white',
+    };
 }
 
 export function ClientDeskMaintenancePanel() {
@@ -110,14 +168,21 @@ export function ClientDeskMaintenancePanel() {
     const [previewUrls, setPreviewUrls] = useState<PreviewUrls>(DEFAULT_PREVIEW_URLS);
 
     const status = useMemo(() => resolveStatus(settings), [settings]);
+    const bannerPreview = useMemo(() => resolveBannerPreview(settings), [settings]);
 
-    const applySettings = (next: MaintenanceSettings) => {
-        setSettings(next);
-        setStartInput(jakartaInputValue(next.start_at));
-        setEndInput(jakartaInputValue(next.end_at));
-    };
+    const applySettings = useCallback((next: MaintenanceSettings) => {
+        const normalized = {
+            ...DEFAULT_SETTINGS,
+            ...next,
+            announcement_kind: normalizeAnnouncementKind(next.announcement_kind),
+            announcement_href: next.announcement_href || '',
+        };
+        setSettings(normalized);
+        setStartInput(jakartaInputValue(normalized.start_at));
+        setEndInput(jakartaInputValue(normalized.end_at));
+    }, []);
 
-    const fetchSettings = async () => {
+    const fetchSettings = useCallback(async () => {
         setLoading(true);
         setError('');
         setSuccess('');
@@ -135,11 +200,11 @@ export function ClientDeskMaintenancePanel() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [applySettings]);
 
     useEffect(() => {
         void fetchSettings();
-    }, []);
+    }, [fetchSettings]);
 
     const handleSave = async (event: FormEvent) => {
         event.preventDefault();
@@ -219,7 +284,7 @@ export function ClientDeskMaintenancePanel() {
                         <label className="flex min-h-[50px] cursor-pointer items-center justify-between gap-3 rounded-xl border border-border bg-bg px-3 py-2">
                             <span>
                                 <span className="block text-sm font-semibold leading-5 text-fg">Announcement bar</span>
-                                <span className="text-xs leading-4 text-fg-muted">Show top warning until end time.</span>
+                                <span className="text-xs leading-4 text-fg-muted">Show top banner until end time.</span>
                             </span>
                             <input
                                 type="checkbox"
@@ -227,6 +292,38 @@ export function ClientDeskMaintenancePanel() {
                                 onChange={(event) => setSettings((current) => ({ ...current, announcement_enabled: event.target.checked }))}
                                 className="h-4 w-4 cursor-pointer accent-[var(--accent)]"
                             />
+                        </label>
+
+                        <label className="space-y-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Banner type</span>
+                            <select
+                                value={settings.announcement_kind}
+                                onChange={(event) => setSettings((current) => ({ ...current, announcement_kind: event.target.value as AnnouncementKind }))}
+                                className="w-full cursor-pointer rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-fg focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                            >
+                                {ANNOUNCEMENT_KIND_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="block text-xs leading-4 text-fg-muted">
+                                {ANNOUNCEMENT_KIND_OPTIONS.find((option) => option.value === settings.announcement_kind)?.description}
+                            </span>
+                        </label>
+
+                        <label className="space-y-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Banner link</span>
+                            <input
+                                type="text"
+                                value={settings.announcement_href}
+                                onChange={(event) => setSettings((current) => ({ ...current, announcement_href: event.target.value }))}
+                                placeholder="/pricing#plus"
+                                className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-fg focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
+                            />
+                            <span className="block text-xs leading-4 text-fg-muted">
+                                Use a Client Desk path like /pricing#plus or a full URL.
+                            </span>
                         </label>
 
                         <label className="space-y-2">
@@ -317,8 +414,13 @@ export function ClientDeskMaintenancePanel() {
                         </div>
                         <div className="mt-3 space-y-2 text-sm text-fg-secondary">
                             <p><span className="font-medium text-fg">Window:</span> {formatJakarta(jakartaInputToIso(startInput))} - {formatJakarta(jakartaInputToIso(endInput))} WIB</p>
+                            <p><span className="font-medium text-fg">Type:</span> {bannerPreview.label}</p>
+                            <p><span className="font-medium text-fg">Link:</span> {settings.announcement_href || '-'}</p>
                             <p><span className="font-medium text-fg">Banner:</span> {settings.announcement_message_id}</p>
                             <p><span className="font-medium text-fg">Page:</span> {settings.message_id}</p>
+                        </div>
+                        <div className={`mt-4 overflow-hidden rounded-lg border px-4 py-2 text-sm font-semibold ${bannerPreview.className}`}>
+                            {settings.announcement_message_id}
                         </div>
                     </div>
 

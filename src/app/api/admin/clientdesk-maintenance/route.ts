@@ -3,9 +3,11 @@ import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
 import { isSameOriginRequest, verifyAdminRequest } from '@/lib/admin-session';
 
 type MaintenanceMode = 'off' | 'on' | 'scheduled';
+type AnnouncementKind = 'maintenance' | 'warning' | 'announcement';
 
 const SETTINGS_ID = 'global';
 const MODES = new Set<MaintenanceMode>(['off', 'on', 'scheduled']);
+const ANNOUNCEMENT_KINDS = new Set<AnnouncementKind>(['maintenance', 'warning', 'announcement']);
 const CLIENTDESK_PREVIEW_BASE =
     process.env.CLIENTDESK_API_URL || 'https://clientdesk.ryanekoapp.web.id';
 
@@ -47,16 +49,48 @@ function normalizeText(value: unknown) {
     return typeof value === 'string' ? value.trim() : '';
 }
 
+function normalizeAnnouncementKind(value: unknown): AnnouncementKind {
+    const kind = normalizeText(value) as AnnouncementKind;
+    return ANNOUNCEMENT_KINDS.has(kind) ? kind : 'maintenance';
+}
+
+function withAnnouncementDefaults<T extends Record<string, unknown> | null>(settings: T) {
+    if (!settings) return settings;
+    return {
+        ...settings,
+        announcement_kind: normalizeAnnouncementKind(settings.announcement_kind),
+        announcement_href: normalizeText(settings.announcement_href),
+    };
+}
+
+function isMissingAnnouncementColumnError(error: { code?: string; message?: string } | null) {
+    if (!error) return false;
+    const message = error.message || '';
+    return (
+        error.code === '42703' ||
+        message.includes('announcement_kind') ||
+        message.includes('announcement_href')
+    );
+}
+
 function validatePayload(body: Record<string, unknown>) {
     const mode = normalizeText(body.mode) as MaintenanceMode;
     if (!MODES.has(mode)) {
         return { error: 'Invalid maintenance mode.' };
     }
 
+    const announcementKind = normalizeAnnouncementKind(body.announcement_kind);
+    if (!ANNOUNCEMENT_KINDS.has(announcementKind)) {
+        return { error: 'Invalid announcement type.' };
+    }
+
     const startAt = normalizeIso(body.start_at);
     const endAt = normalizeIso(body.end_at);
     if ((mode === 'on' || mode === 'scheduled') && (!startAt || !endAt)) {
         return { error: 'Start and end time are required.' };
+    }
+    if (body.announcement_enabled === true && !endAt) {
+        return { error: 'End time is required for the announcement bar.' };
     }
 
     if (startAt && endAt && new Date(endAt).getTime() <= new Date(startAt).getTime()) {
@@ -83,6 +117,8 @@ function validatePayload(body: Record<string, unknown>) {
             message_en: messageEn,
             announcement_message_id: announcementMessageId,
             announcement_message_en: announcementMessageEn,
+            announcement_kind: announcementKind,
+            announcement_href: normalizeText(body.announcement_href),
         },
     };
 }
@@ -108,7 +144,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            settings: data || null,
+            settings: withAnnouncementDefaults(data || null),
             previewUrls: getPreviewUrls(),
         });
     } catch (error) {
@@ -139,11 +175,24 @@ export async function PUT(request: NextRequest) {
         }
 
         const supabase = getClientDeskSupabase();
-        const { data, error } = await supabase
+        let { data, error } = await supabase
             .from('platform_maintenance_settings')
             .upsert(validated.data, { onConflict: 'id' })
             .select('*')
             .single();
+
+        if (isMissingAnnouncementColumnError(error)) {
+            const legacyData: Record<string, unknown> = { ...validated.data };
+            delete legacyData.announcement_kind;
+            delete legacyData.announcement_href;
+            const legacyResult = await supabase
+                .from('platform_maintenance_settings')
+                .upsert(legacyData, { onConflict: 'id' })
+                .select('*')
+                .single();
+            data = legacyResult.data;
+            error = legacyResult.error;
+        }
 
         if (error) {
             return NextResponse.json(
@@ -154,7 +203,7 @@ export async function PUT(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            settings: data,
+            settings: withAnnouncementDefaults(data),
             previewUrls: getPreviewUrls(),
         });
     } catch (error) {
