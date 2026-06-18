@@ -156,6 +156,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [resetDialog, setResetDialog] = useState<License | null>(null);
     const [revokeDialog, setRevokeDialog] = useState<License | null>(null);
     const [unrevokeDialog, setUnrevokeDialog] = useState<License | null>(null);
+    const [resendDialog, setResendDialog] = useState<License | null>(null);
     const [deleteDialog, setDeleteDialog] = useState<License | null>(null);
     const [editTableDialog, setEditTableDialog] = useState<License | null>(null);
     const [editResetDialog, setEditResetDialog] = useState<License | null>(null);
@@ -167,6 +168,9 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [editInstagram, setEditInstagram] = useState('');
     const [editDeviceId, setEditDeviceId] = useState('');
     const [editResetCount, setEditResetCount] = useState('');
+    const [resendEmail, setResendEmail] = useState('');
+    const [resendError, setResendError] = useState('');
+    const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
     const fetchLicenses = useCallback(async () => {
         setLoading(true);
@@ -281,6 +285,45 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
         }
     };
 
+    const handleResendEmail = async () => {
+        if (!resendDialog) return;
+        const email = resendEmail.trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            setResendError('Invalid email address');
+            return;
+        }
+
+        setActionLoading(true);
+        setResendError('');
+        setActionFeedback(null);
+        try {
+            const res = await fetch('/api/admin/licenses', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: resendDialog.id, action: 'resend_email', email }),
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                const message = data?.error || t('dialog.resendEmailFailed');
+                setResendError(message);
+                setActionFeedback({ type: 'error', message });
+                return;
+            }
+
+            setResendDialog(null);
+            setResendEmail('');
+            setActionFeedback({ type: 'success', message: `${t('dialog.resendEmailSuccess')} (${data.email || email})` });
+            fetchLicenses();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : t('dialog.resendEmailFailed');
+            setResendError(message);
+            setActionFeedback({ type: 'error', message });
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     const handleEditTable = async () => {
         if (!editTableDialog) return;
         setActionLoading(true);
@@ -339,6 +382,12 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const openEditResetCount = (license: License) => {
         setEditResetDialog(license);
         setEditResetCount(String(license.reset_count ?? 0));
+    };
+
+    const openResendEmail = (license: License) => {
+        setResendDialog(license);
+        setResendEmail(license.customer_email || '');
+        setResendError('');
     };
 
     const getStatusBadge = (status: string) => {
@@ -442,6 +491,15 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                 </div>
             </div>
 
+            {actionFeedback && (
+                <div className={`rounded-xl border px-4 py-3 text-sm animate-fade-in ${actionFeedback.type === 'success'
+                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-700 dark:text-emerald-400'
+                    : 'bg-red-500/10 border-red-500/25 text-red-700 dark:text-red-400'
+                    }`}>
+                    {actionFeedback.message}
+                </div>
+            )}
+
             {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 animate-slide-up">
                 <div className="relative flex-1">
@@ -528,6 +586,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                     <td className="px-4 py-3">
                                         <div className="flex items-center justify-end gap-1.5">
                                             <button onClick={() => openEditTable(license)} className="inline-flex items-center justify-center w-8 h-8 bg-indigo-500 text-white rounded-lg cursor-pointer hover:bg-indigo-600 hover:shadow-md transition-all active:scale-95" title={t('action.editTable')}>{Icons.editTable}</button>
+                                            <button onClick={() => openResendEmail(license)} className="inline-flex items-center justify-center w-8 h-8 bg-emerald-600 text-white rounded-lg cursor-pointer hover:bg-emerald-700 hover:shadow-md transition-all active:scale-95" title={t('action.resendEmail')}>{Icons.mail}</button>
                                             <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="inline-flex items-center justify-center w-8 h-8 bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 hover:shadow-md transition-all active:scale-95" title={t('action.editDevice')}>{Icons.edit}</button>
                                             <button onClick={() => setResetDialog(license)} className="inline-flex items-center justify-center w-8 h-8 bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 hover:shadow-md transition-all active:scale-95" title={t('action.reset')}>{Icons.reset}</button>
                                             <button onClick={() => openEditResetCount(license)} className="inline-flex items-center justify-center w-8 h-8 bg-sky-600 text-white rounded-lg cursor-pointer hover:bg-sky-700 hover:shadow-md transition-all active:scale-95" title={t('action.editResetCount')}>{Icons.chart}</button>
@@ -590,6 +649,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                 </div>
                                 <div className="flex gap-1.5 flex-wrap">
                                     <button onClick={() => openEditTable(license)} className="flex items-center justify-center w-8 h-8 bg-indigo-500 text-white rounded-lg cursor-pointer hover:bg-indigo-600 transition-all active:scale-95" title={t('action.editTable')}>{Icons.editTable}</button>
+                                    <button onClick={() => openResendEmail(license)} className="flex items-center justify-center w-8 h-8 bg-emerald-600 text-white rounded-lg cursor-pointer hover:bg-emerald-700 transition-all active:scale-95" title={t('action.resendEmail')}>{Icons.mail}</button>
                                     <button onClick={() => { setChangeDialog(license); setNewPlatform(license.device_type || ''); }} className="flex items-center justify-center w-8 h-8 bg-warning text-white rounded-lg cursor-pointer hover:bg-amber-600 transition-all active:scale-95" title={t('action.editDevice')}>{Icons.edit}</button>
                                     <button onClick={() => setResetDialog(license)} className="flex items-center justify-center w-8 h-8 bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 transition-all active:scale-95" title={t('action.reset')}>{Icons.reset}</button>
                                     <button onClick={() => openEditResetCount(license)} className="flex items-center justify-center w-8 h-8 bg-sky-600 text-white rounded-lg cursor-pointer hover:bg-sky-700 transition-all active:scale-95" title={t('action.editResetCount')}>{Icons.chart}</button>
@@ -774,6 +834,49 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                         <button onClick={() => setUnrevokeDialog(null)} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
                         <button onClick={handleUnrevoke} disabled={actionLoading} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl cursor-pointer hover:bg-emerald-700 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
                             {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('action.unrevoke')}
+                        </button>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* Resend License Email Dialog */}
+            <Dialog open={!!resendDialog} onClose={() => { setResendDialog(null); setResendEmail(''); setResendError(''); }}>
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 rounded-lg shrink-0">{Icons.mail}</div>
+                        <div>
+                            <h3 className="text-base sm:text-lg font-semibold text-fg">{t('dialog.resendEmailTitle')}</h3>
+                            <p className="text-fg-muted text-sm mt-0.5">{t('dialog.resendEmailDesc')}</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 text-sm space-y-1">
+                        <div className="text-fg-muted">{t('dialog.resetSerial')}: <span className="text-fg font-mono text-xs sm:text-sm break-all">{resendDialog?.serial_key}</span></div>
+                        <div className="text-fg-muted">{t('dialog.resetUser')}: <span className="text-fg">{resendDialog?.customer_name || '-'}</span></div>
+                        <div className="text-fg-muted">{t('dialog.oldEmail')}: <span className="text-fg break-all">{resendDialog?.customer_email || '-'}</span></div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-medium text-fg-muted mb-1 block">{t('dialog.newEmail')}</label>
+                        <input
+                            type="email"
+                            value={resendEmail}
+                            onChange={(e) => { setResendEmail(e.target.value); setResendError(''); }}
+                            placeholder="email@example.com"
+                            className="w-full px-4 py-2.5 bg-bg border border-border rounded-xl text-fg text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all placeholder-fg-muted"
+                        />
+                    </div>
+
+                    {resendError && (
+                        <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+                            {resendError}
+                        </div>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                        <button onClick={() => { setResendDialog(null); setResendEmail(''); setResendError(''); }} className="flex-1 py-2.5 bg-bg-secondary text-fg-secondary rounded-xl cursor-pointer hover:bg-border hover:text-fg transition-all active:scale-[0.98] text-sm font-medium">{t('dialog.cancel')}</button>
+                        <button onClick={handleResendEmail} disabled={!resendEmail.trim() || actionLoading} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl cursor-pointer hover:bg-emerald-700 disabled:opacity-50 transition-all active:scale-[0.98] text-sm font-semibold flex items-center justify-center gap-2">
+                            {actionLoading ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('dialog.processing')}</>) : t('action.resendEmail')}
                         </button>
                     </div>
                 </div>

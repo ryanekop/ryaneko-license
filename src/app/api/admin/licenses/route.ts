@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { escapeTelegramHtml, notifyAlert } from '@/lib/telegram';
+import { getEmailHtml, getEmailSubject } from '@/lib/email-templates';
+import { sendEmail } from '@/lib/resend';
 import type { License } from '@/lib/types';
 
 const tg = (value: unknown) => escapeTelegramHtml(value);
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -106,10 +109,131 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
     try {
         const body = await request.json();
-        const { id, action, ...updateData } = body;
+        const { id, action, email, ...updateData } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Missing license ID' }, { status: 400 });
+        }
+
+        if (action === 'resend_email') {
+            const newEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+            if (!EMAIL_REGEX.test(newEmail)) {
+                return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
+            }
+
+            const { data: current, error: currentError } = await supabaseAdmin
+                .from('licenses')
+                .select('*, product:products(*)')
+                .eq('id', id)
+                .single();
+
+            if (currentError || !current) {
+                return NextResponse.json({ error: currentError?.message || 'License not found' }, { status: currentError ? 500 : 404 });
+            }
+
+            const selectedLicense = current as License;
+            const product = selectedLicense.product;
+            if (!product) {
+                return NextResponse.json({ error: 'Product not found for this license' }, { status: 400 });
+            }
+
+            let purchase: any = null;
+            if (selectedLicense.order_id) {
+                const { data: purchaseData, error: purchaseError } = await supabaseAdmin
+                    .from('purchases')
+                    .select('*')
+                    .eq('order_id', selectedLicense.order_id)
+                    .maybeSingle();
+
+                if (purchaseError) {
+                    console.error('[Admin License] Failed to load purchase for resend:', purchaseError);
+                } else {
+                    purchase = purchaseData;
+                }
+            }
+
+            const assignedIds = Array.isArray(purchase?.licenses_assigned)
+                ? purchase.licenses_assigned.filter((licenseId: unknown): licenseId is string => typeof licenseId === 'string' && licenseId.length > 0)
+                : [];
+
+            let licensesToEmail: License[] = [selectedLicense];
+            if (assignedIds.length > 0) {
+                const { data: assignedLicenses, error: assignedError } = await supabaseAdmin
+                    .from('licenses')
+                    .select('*, product:products(*)')
+                    .in('id', assignedIds);
+
+                if (assignedError) {
+                    console.error('[Admin License] Failed to load assigned licenses for resend:', assignedError);
+                } else if (assignedLicenses && assignedLicenses.length > 0) {
+                    const byId = new Map((assignedLicenses as License[]).map((license) => [license.id, license]));
+                    const orderedAssignedLicenses = assignedIds.map((licenseId: string) => byId.get(licenseId)).filter(Boolean) as License[];
+                    if (orderedAssignedLicenses.length > 0) {
+                        licensesToEmail = orderedAssignedLicenses;
+                    }
+                }
+            }
+
+            const relatedLicenseIds = licensesToEmail.map((license) => license.id);
+            const { error: licenseUpdateError } = await supabaseAdmin
+                .from('licenses')
+                .update({
+                    customer_email: newEmail,
+                    updated_at: new Date().toISOString(),
+                })
+                .in('id', relatedLicenseIds);
+
+            if (licenseUpdateError) {
+                return NextResponse.json({ error: licenseUpdateError.message }, { status: 500 });
+            }
+
+            if (selectedLicense.order_id) {
+                const { error: purchaseUpdateError } = await supabaseAdmin
+                    .from('purchases')
+                    .update({ customer_email: newEmail })
+                    .eq('order_id', selectedLicense.order_id);
+
+                if (purchaseUpdateError) {
+                    return NextResponse.json({ error: purchaseUpdateError.message }, { status: 500 });
+                }
+            }
+
+            const includesPlugin = Boolean(purchase?.includes_plugin);
+            const customerName = purchase?.customer_name || selectedLicense.customer_name || 'Customer';
+            const downloadLinks = (product.download_urls || {}) as Record<string, string>;
+            const serialKeys = licensesToEmail.map((license) => license.serial_key).filter(Boolean);
+            const html = getEmailHtml(product.slug, {
+                customerName,
+                serialKeys,
+                productName: product.name,
+                downloadLinks,
+                pluginUrl: product.plugin_url || undefined,
+                includesPlugin,
+            });
+            const subject = getEmailSubject(product.slug, includesPlugin);
+            const result = await sendEmail({
+                to: newEmail,
+                subject,
+                html,
+            });
+
+            if (!result.success) {
+                await notifyAlert(
+                    `<b>⚠️ Resend License Email Failed</b>\n\n` +
+                    `📦 Product: ${tg(product.name)}\n` +
+                    `🔑 Serial: <code>${tg(selectedLicense.serial_key)}</code>\n` +
+                    `📧 Email: ${tg(newEmail)}\n` +
+                    `❌ Error: ${tg(result.error)}`
+                );
+                return NextResponse.json({ error: result.error || 'Failed to send email' }, { status: 502 });
+            }
+
+            return NextResponse.json({
+                success: true,
+                id: result.id,
+                email: newEmail,
+                licenseIds: relatedLicenseIds,
+            });
         }
 
         let finalUpdate: Record<string, unknown> = { ...updateData };
