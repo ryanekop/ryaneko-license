@@ -25,12 +25,20 @@ type PreviewUrls = {
     en: string;
 };
 
-const DEFAULT_PREVIEW_URLS: PreviewUrls = {
+type MaintenancePanelConfig = {
+    productName: string;
+    endpoint: string;
+    previewUrls: PreviewUrls;
+    defaultSettings: MaintenanceSettings;
+    linkExample: string;
+};
+
+const CLIENTDESK_PREVIEW_URLS: PreviewUrls = {
     id: 'https://clientdesk.ryanekoapp.web.id/id/maintenance',
     en: 'https://clientdesk.ryanekoapp.web.id/en/maintenance',
 };
 
-const DEFAULT_SETTINGS: MaintenanceSettings = {
+const CLIENTDESK_DEFAULT_SETTINGS: MaintenanceSettings = {
     mode: 'off',
     announcement_enabled: true,
     start_at: null,
@@ -45,6 +53,42 @@ const DEFAULT_SETTINGS: MaintenanceSettings = {
         'Announcement: Team/Freelance Portal, Payment Gateway, and Auto Sync Spreadsheet are free to access until 30 June 2026 at 23:59 WIB. After that, at least the Plus plan is required.',
     announcement_kind: 'warning',
     announcement_href: '/pricing#plus',
+};
+
+const FASTPIK_PREVIEW_URLS: PreviewUrls = {
+    id: 'https://fastpik.ryanekoapp.web.id/id/maintenance',
+    en: 'https://fastpik.ryanekoapp.web.id/en/maintenance',
+};
+
+const FASTPIK_DEFAULT_SETTINGS: MaintenanceSettings = {
+    mode: 'off',
+    announcement_enabled: false,
+    start_at: null,
+    end_at: null,
+    message_id:
+        'Fastpik sedang menjalani maintenance. Silakan coba kembali setelah proses maintenance selesai.',
+    message_en:
+        'Fastpik is currently undergoing maintenance. Please try again after maintenance is complete.',
+    announcement_message_id: 'Pengumuman maintenance Fastpik.',
+    announcement_message_en: 'Fastpik maintenance announcement.',
+    announcement_kind: 'maintenance',
+    announcement_href: '',
+};
+
+const CLIENTDESK_CONFIG: MaintenancePanelConfig = {
+    productName: 'Client Desk',
+    endpoint: '/api/admin/clientdesk-maintenance',
+    previewUrls: CLIENTDESK_PREVIEW_URLS,
+    defaultSettings: CLIENTDESK_DEFAULT_SETTINGS,
+    linkExample: '/pricing#plus',
+};
+
+const FASTPIK_CONFIG: MaintenancePanelConfig = {
+    productName: 'Fastpik',
+    endpoint: '/api/admin/fastpik-maintenance',
+    previewUrls: FASTPIK_PREVIEW_URLS,
+    defaultSettings: FASTPIK_DEFAULT_SETTINGS,
+    linkExample: '/id/pricing',
 };
 
 const ANNOUNCEMENT_KIND_OPTIONS: Array<{
@@ -165,22 +209,22 @@ function resolveBannerPreview(settings: MaintenanceSettings) {
     };
 }
 
-export function ClientDeskMaintenancePanel() {
-    const [settings, setSettings] = useState<MaintenanceSettings>(DEFAULT_SETTINGS);
-    const [startInput, setStartInput] = useState(jakartaInputValue(DEFAULT_SETTINGS.start_at));
-    const [endInput, setEndInput] = useState(jakartaInputValue(DEFAULT_SETTINGS.end_at));
+function PlatformMaintenancePanel({ config }: { config: MaintenancePanelConfig }) {
+    const [settings, setSettings] = useState<MaintenanceSettings>(config.defaultSettings);
+    const [startInput, setStartInput] = useState(jakartaInputValue(config.defaultSettings.start_at));
+    const [endInput, setEndInput] = useState(jakartaInputValue(config.defaultSettings.end_at));
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [previewUrls, setPreviewUrls] = useState<PreviewUrls>(DEFAULT_PREVIEW_URLS);
+    const [previewUrls, setPreviewUrls] = useState<PreviewUrls>(config.previewUrls);
 
     const status = useMemo(() => resolveStatus(settings), [settings]);
     const bannerPreview = useMemo(() => resolveBannerPreview(settings), [settings]);
 
     const applySettings = useCallback((next: MaintenanceSettings) => {
         const normalized = {
-            ...DEFAULT_SETTINGS,
+            ...config.defaultSettings,
             ...next,
             announcement_kind: normalizeAnnouncementKind(next.announcement_kind),
             announcement_href: next.announcement_href || '',
@@ -188,27 +232,27 @@ export function ClientDeskMaintenancePanel() {
         setSettings(normalized);
         setStartInput(jakartaInputValue(normalized.start_at));
         setEndInput(jakartaInputValue(normalized.end_at));
-    }, []);
+    }, [config.defaultSettings]);
 
     const fetchSettings = useCallback(async () => {
         setLoading(true);
         setError('');
         setSuccess('');
         try {
-            const res = await fetch('/api/admin/clientdesk-maintenance');
+            const res = await fetch(config.endpoint);
             const data = await res.json();
             if (!res.ok || !data.success) {
                 setError(data.error || 'Failed to load maintenance settings');
                 return;
             }
-            applySettings(data.settings || DEFAULT_SETTINGS);
-            setPreviewUrls(data.previewUrls || DEFAULT_PREVIEW_URLS);
+            applySettings(data.settings || config.defaultSettings);
+            setPreviewUrls(data.previewUrls || config.previewUrls);
         } catch {
             setError('Connection error');
         } finally {
             setLoading(false);
         }
-    }, [applySettings]);
+    }, [applySettings, config.defaultSettings, config.endpoint, config.previewUrls]);
 
     useEffect(() => {
         void fetchSettings();
@@ -227,7 +271,7 @@ export function ClientDeskMaintenancePanel() {
         };
 
         try {
-            const res = await fetch('/api/admin/clientdesk-maintenance', {
+            const res = await fetch(config.endpoint, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -238,8 +282,8 @@ export function ClientDeskMaintenancePanel() {
                 return;
             }
             applySettings(data.settings);
-            setPreviewUrls(data.previewUrls || DEFAULT_PREVIEW_URLS);
-            setSuccess('Maintenance setting saved. Client Desk will use this config within a few seconds.');
+            setPreviewUrls(data.previewUrls || config.previewUrls);
+            setSuccess(`Maintenance setting saved. ${config.productName} will use this config within a few seconds.`);
         } catch {
             setError('Connection error');
         } finally {
@@ -253,9 +297,9 @@ export function ClientDeskMaintenancePanel() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <h3 className="text-lg font-semibold text-fg">Maintenance Control</h3>
-                        <p className="mt-1 text-sm text-fg-muted">Global Client Desk lock and announcement.</p>
+                        <p className="mt-1 text-sm text-fg-muted">Global {config.productName} lock and announcement.</p>
                         <p className="mt-1 text-xs text-fg-muted">
-                            Only Maintenance type can route Client Desk to the maintenance page. Warning and Pengumuman stay as dismissible banners.
+                            Only Maintenance type can route {config.productName} to the maintenance page. Warning and Pengumuman stay as dismissible banners.
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -329,11 +373,11 @@ export function ClientDeskMaintenancePanel() {
                                 type="text"
                                 value={settings.announcement_href}
                                 onChange={(event) => setSettings((current) => ({ ...current, announcement_href: event.target.value }))}
-                                placeholder="/pricing#plus"
+                                placeholder={config.linkExample}
                                 className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-fg focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20"
                             />
                             <span className="block text-xs leading-4 text-fg-muted">
-                                Use a Client Desk path like /pricing#plus or a full URL.
+                                Use a {config.productName} path like {config.linkExample} or a full URL.
                             </span>
                         </label>
 
@@ -459,4 +503,12 @@ export function ClientDeskMaintenancePanel() {
             )}
         </form>
     );
+}
+
+export function ClientDeskMaintenancePanel() {
+    return <PlatformMaintenancePanel config={CLIENTDESK_CONFIG} />;
+}
+
+export function FastpikMaintenancePanel() {
+    return <PlatformMaintenancePanel config={FASTPIK_CONFIG} />;
 }

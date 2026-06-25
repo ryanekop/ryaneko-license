@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { AdminToast } from '@/components/AdminToast';
+import { FastpikMaintenancePanel } from '@/components/ClientDeskMaintenancePanel';
 import { useLang } from '@/lib/providers';
 
 interface UserData {
@@ -80,6 +81,11 @@ const SortIcon = () => (
 const UsersIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+);
+const MaintenanceIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z" />
     </svg>
 );
 
@@ -163,6 +169,7 @@ export default function FastpikPage() {
     const [filterTier, setFilterTier] = useState<string>('all');
     const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
     const [toast, setToast] = useState<{ success: boolean; message: string } | null>(null);
+    const [activeTab, setActiveTab] = useState<'users' | 'maintenance'>('users');
 
     // Create form
     const [showCreate, setShowCreate] = useState(false);
@@ -391,7 +398,7 @@ export default function FastpikPage() {
                     </h2>
                     <p className="text-fg-muted text-sm mt-1">{t('fastpik.desc')}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                {activeTab === 'users' && <div className="flex items-center gap-2">
                     <div className="relative">
                         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted">
                             <SortIcon />
@@ -420,9 +427,36 @@ export default function FastpikPage() {
                     >
                         <PlusIcon /> {t('fastpik.newUser')}
                     </button>
-                </div>
+                </div>}
             </div>
 
+            <div className="flex w-fit rounded-xl border border-border bg-bg-card p-1 shadow-[var(--shadow)]">
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('users')}
+                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                        activeTab === 'users'
+                            ? 'bg-accent text-accent-fg'
+                            : 'text-fg-secondary hover:bg-bg-secondary hover:text-fg'
+                    }`}
+                >
+                    <UsersIcon /> Users
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('maintenance')}
+                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                        activeTab === 'maintenance'
+                            ? 'bg-accent text-accent-fg'
+                            : 'text-fg-secondary hover:bg-bg-secondary hover:text-fg'
+                    }`}
+                >
+                    <MaintenanceIcon /> Maintenance
+                </button>
+            </div>
+
+            {activeTab === 'users' ? (
+                <>
             {/* Search */}
             <div className="relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
@@ -850,6 +884,10 @@ export default function FastpikPage() {
                     </button>
                 </div>
             </Dialog>
+                </>
+            ) : (
+                <FastpikMaintenancePanel />
+            )}
         </div>
     );
 }
