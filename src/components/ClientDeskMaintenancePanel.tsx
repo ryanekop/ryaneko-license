@@ -170,6 +170,12 @@ function isAnnouncementActive(settings: MaintenanceSettings) {
 }
 
 function resolveStatus(settings: MaintenanceSettings) {
+    if (settings.mode === 'on') {
+        return { label: 'Maintenance aktif', className: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300' };
+    }
+    if (isActive(settings)) {
+        return { label: 'Scheduled aktif sekarang', className: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300' };
+    }
     if (
         settings.announcement_kind !== 'maintenance' &&
         settings.announcement_enabled &&
@@ -180,9 +186,10 @@ function resolveStatus(settings: MaintenanceSettings) {
     if (settings.mode === 'off' && isAnnouncementActive(settings)) {
         return { label: 'Banner aktif', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
     }
+    if (settings.mode === 'scheduled' && isAnnouncementActive(settings)) {
+        return { label: 'Banner aktif • Scheduled', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
+    }
     if (settings.mode === 'off') return { label: 'Off', className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' };
-    if (settings.mode === 'on') return { label: 'Maintenance aktif', className: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300' };
-    if (isActive(settings)) return { label: 'Scheduled aktif sekarang', className: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300' };
     return { label: 'Scheduled', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
 }
 
