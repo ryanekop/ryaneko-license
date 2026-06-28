@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
         // Invite user by email
         const { data: authData, error: authError } = await supabase.auth.admin.inviteUserByEmail(normalizedEmail, {
             data: { full_name: name },
-            redirectTo: 'https://clientdesk.ryanekoapp.web.id/id/auth/callback?next=/id/dashboard',
+            redirectTo: 'https://clientdesk.id/id/auth/callback?next=/id/dashboard',
         });
 
         if (authError) {

@@ -9,7 +9,7 @@ const SETTINGS_ID = 'global';
 const MODES = new Set<MaintenanceMode>(['off', 'on', 'scheduled']);
 const ANNOUNCEMENT_KINDS = new Set<AnnouncementKind>(['maintenance', 'warning', 'announcement']);
 const CLIENTDESK_PREVIEW_BASE =
-    process.env.CLIENTDESK_API_URL || 'https://clientdesk.ryanekoapp.web.id';
+    process.env.CLIENTDESK_API_URL || 'https://clientdesk.id';
 
 function getPreviewUrls() {
     const baseUrl = CLIENTDESK_PREVIEW_BASE.replace(/\/+$/, '');

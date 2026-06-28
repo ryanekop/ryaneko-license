@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const CLIENTDESK_API = process.env.CLIENTDESK_API_URL || 'https://clientdesk.ryanekoapp.web.id';
+const CLIENTDESK_API = process.env.CLIENTDESK_API_URL || 'https://clientdesk.id';
 const CLIENTDESK_KEY = process.env.CLIENTDESK_ADMIN_API_KEY || '';
 
 async function proxyToClientDesk(request: NextRequest, method: string) {

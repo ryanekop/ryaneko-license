@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * Forwards requests to Client Desk /api/admin/tenants with server-side API key.
  */
 
-const CLIENTDESK_API = process.env.CLIENTDESK_API_URL || 'https://clientdesk.ryanekoapp.web.id';
+const CLIENTDESK_API = process.env.CLIENTDESK_API_URL || 'https://clientdesk.id';
 const CLIENTDESK_KEY = process.env.CLIENTDESK_ADMIN_API_KEY || '';
 
 function parseUpstreamPayload(text: string, status: number, ok: boolean) {

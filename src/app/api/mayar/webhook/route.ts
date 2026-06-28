@@ -1171,7 +1171,7 @@ async function handleClientDeskSubscription(
     payload: MayarWebhookPayload
 ): Promise<NextResponse> {
     const clientdeskSupabase = getClientDeskSupabase();
-    const CLIENTDESK_SITE_URL = process.env.CLIENTDESK_SITE_URL || 'https://clientdesk.ryanekoapp.web.id';
+    const CLIENTDESK_SITE_URL = process.env.CLIENTDESK_SITE_URL || 'https://clientdesk.id';
 
     const data = payload.data || payload;
     const rawStatus = (data as any).status || (payload as any).status;
@@ -1387,7 +1387,7 @@ async function handleBundleSubscription(
 ): Promise<NextResponse> {
     const clientdeskSupabase = getClientDeskSupabase();
     const fastpikSupabase = getFastpikSupabase();
-    const CLIENTDESK_SITE_URL = process.env.CLIENTDESK_SITE_URL || 'https://clientdesk.ryanekoapp.web.id';
+    const CLIENTDESK_SITE_URL = process.env.CLIENTDESK_SITE_URL || 'https://clientdesk.id';
     const FASTPIK_SITE_URL = process.env.FASTPIK_SITE_URL || 'https://fastpik.id';
 
     const data = payload.data || payload;

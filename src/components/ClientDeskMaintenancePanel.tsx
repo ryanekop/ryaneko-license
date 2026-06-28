@@ -34,8 +34,8 @@ type MaintenancePanelConfig = {
 };
 
 const CLIENTDESK_PREVIEW_URLS: PreviewUrls = {
-    id: 'https://clientdesk.ryanekoapp.web.id/id/maintenance',
-    en: 'https://clientdesk.ryanekoapp.web.id/en/maintenance',
+    id: 'https://clientdesk.id/id/maintenance',
+    en: 'https://clientdesk.id/en/maintenance',
 };
 
 const CLIENTDESK_DEFAULT_SETTINGS: MaintenanceSettings = {
