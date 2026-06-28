@@ -972,7 +972,7 @@ async function handleFastpikSubscription(
     payload: MayarWebhookPayload
 ): Promise<NextResponse> {
     const fastpikSupabase = getFastpikSupabase();
-    const FASTPIK_SITE_URL = process.env.FASTPIK_SITE_URL || 'https://fastpik.ryanekoapp.web.id';
+    const FASTPIK_SITE_URL = process.env.FASTPIK_SITE_URL || 'https://fastpik.id';
 
     const data = payload.data || payload;
     const rawStatus = (data as any).status || (payload as any).status;
@@ -1388,7 +1388,7 @@ async function handleBundleSubscription(
     const clientdeskSupabase = getClientDeskSupabase();
     const fastpikSupabase = getFastpikSupabase();
     const CLIENTDESK_SITE_URL = process.env.CLIENTDESK_SITE_URL || 'https://clientdesk.ryanekoapp.web.id';
-    const FASTPIK_SITE_URL = process.env.FASTPIK_SITE_URL || 'https://fastpik.ryanekoapp.web.id';
+    const FASTPIK_SITE_URL = process.env.FASTPIK_SITE_URL || 'https://fastpik.id';
 
     const data = payload.data || payload;
     const rawStatus = (data as any).status || (payload as any).status;

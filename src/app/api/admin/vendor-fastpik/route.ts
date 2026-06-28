@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * so the admin doesn't need to input the key manually on each device.
  */
 
-const FASTPIK_API = process.env.FASTPIK_API_URL || 'https://fastpik.ryanekoapp.web.id';
+const FASTPIK_API = process.env.FASTPIK_API_URL || 'https://fastpik.id';
 const FASTPIK_KEY = process.env.FASTPIK_ADMIN_API_KEY || '';
 
 function parseUpstreamPayload(text: string, status: number, ok: boolean) {

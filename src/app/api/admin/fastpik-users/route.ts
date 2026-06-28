@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
         // Invite user by email
         const { data: authData, error: authError } = await fastpikSupabase.auth.admin.inviteUserByEmail(email, {
             data: { full_name: name },
-            redirectTo: 'https://fastpik.ryanekoapp.web.id/id/auth/callback?next=/id/dashboard',
+            redirectTo: 'https://fastpik.id/id/auth/callback?next=/id/dashboard',
         });
 
         if (authError) {

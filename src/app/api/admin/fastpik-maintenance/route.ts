@@ -9,7 +9,7 @@ const SETTINGS_ID = 'global';
 const MODES = new Set<MaintenanceMode>(['off', 'on', 'scheduled']);
 const ANNOUNCEMENT_KINDS = new Set<AnnouncementKind>(['maintenance', 'warning', 'announcement']);
 const FASTPIK_PREVIEW_BASE =
-    process.env.FASTPIK_API_URL || 'https://fastpik.ryanekoapp.web.id';
+    process.env.FASTPIK_API_URL || 'https://fastpik.id';
 
 function getPreviewUrls() {
     const baseUrl = FASTPIK_PREVIEW_BASE.replace(/\/+$/, '');

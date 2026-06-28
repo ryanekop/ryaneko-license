@@ -56,8 +56,8 @@ const CLIENTDESK_DEFAULT_SETTINGS: MaintenanceSettings = {
 };
 
 const FASTPIK_PREVIEW_URLS: PreviewUrls = {
-    id: 'https://fastpik.ryanekoapp.web.id/id/maintenance',
-    en: 'https://fastpik.ryanekoapp.web.id/en/maintenance',
+    id: 'https://fastpik.id/id/maintenance',
+    en: 'https://fastpik.id/en/maintenance',
 };
 
 const FASTPIK_DEFAULT_SETTINGS: MaintenanceSettings = {
