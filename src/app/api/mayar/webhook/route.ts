@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getFastpikSupabase } from '@/lib/fastpik-supabase';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
+import { findClientDeskMemberByEmail } from '@/lib/clientdesk-workspace';
 import { escapeTelegramHtml, notifyPurchase, notifyAlert } from '@/lib/telegram';
 import { sendEmail } from '@/lib/resend';
 import { getEmailHtml, getEmailSubject } from '@/lib/email-templates';
@@ -574,6 +575,33 @@ async function findUserIdByEmail(supabase: any, email: string): Promise<string |
     }
 
     return null;
+}
+
+async function flagClientDeskMemberPurchase(params: {
+    supabase: SupabaseClient;
+    email: string;
+    name: string;
+    transactionId: string;
+    productName: string;
+    amount: number;
+    source: 'standalone' | 'bundle';
+}) {
+    const membership = await findClientDeskMemberByEmail(params.supabase, params.email);
+    if (!membership) return false;
+
+    await notifyAlert(
+        `<b>⚠️ Client Desk Member Purchase Review</b>\n\n` +
+        `Subscription hanya boleh dimiliki Owner. Tidak ada paket yang diubah.\n` +
+        `👤 ${tg(params.name)}\n` +
+        `📧 ${tg(params.email)}\n` +
+        `🎭 ${tg(membership.role?.name || 'Member')}\n` +
+        `🏢 Owner: ${tg(membership.owner_user_id)}\n` +
+        `📦 ${tg(params.productName)} (${tg(params.source)})\n` +
+        `💰 Rp ${formatAmountIdr(params.amount)}\n` +
+        `🧾 Order: ${tg(params.transactionId)}`
+    );
+
+    return true;
 }
 
 type BundleApp = 'clientdesk' | 'fastpik';
@@ -1251,6 +1279,18 @@ async function handleClientDeskSubscription(
         return jsonResponse('Success', `Duplicate transaction ignored: ${transactionId}`);
     }
 
+    if (await flagClientDeskMemberPurchase({
+        supabase: clientdeskSupabase,
+        email,
+        name,
+        transactionId,
+        productName,
+        amount: amountNum,
+        source: 'standalone',
+    })) {
+        return jsonResponse('Success', 'Client Desk member purchase requires Owner review');
+    }
+
     // Find or Create User in Client Desk Supabase
     let userId: string | undefined;
     const { data: newUser, error: createError } = await clientdeskSupabase.auth.admin.createUser({
@@ -1459,6 +1499,18 @@ async function handleBundleSubscription(
     if (alreadyInClientDesk && alreadyInFastpik) {
         console.log(`[Bundle Webhook] Duplicate transaction ignored: ${transactionId}`);
         return jsonResponse('Success', `Duplicate transaction ignored: ${transactionId}`);
+    }
+
+    if (await flagClientDeskMemberPurchase({
+        supabase: clientdeskSupabase,
+        email,
+        name,
+        transactionId,
+        productName,
+        amount: amountNum,
+        source: 'bundle',
+    })) {
+        return jsonResponse('Success', 'Bundle purchase by Client Desk member requires Owner review');
     }
 
     const [clientDeskUserId, fastpikUserId] = await Promise.all([

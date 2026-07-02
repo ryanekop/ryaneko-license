@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { User } from '@supabase/supabase-js';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
+import {
+    findClientDeskMemberByEmail,
+    findClientDeskMembershipByUserId,
+    isClientDeskWorkspaceMember,
+    listActiveClientDeskMembersForOwner,
+    listClientDeskWorkspaceMemberships,
+} from '@/lib/clientdesk-workspace';
 import { escapeTelegramHtml, notifyAlert, notifyInfo } from '@/lib/telegram';
 
 type ClientDeskSubscription = {
@@ -17,6 +24,19 @@ type ClientDeskSubscription = {
 type ClientDeskProfile = {
     id: string;
     full_name: string | null;
+};
+
+type ClientDeskMemberView = {
+    id: string | null;
+    membershipId: string;
+    email: string;
+    name: string;
+    roleName: string;
+    roleSlug: string | null;
+    status: string;
+    createdAt: string | null;
+    lastSignIn: string | null;
+    emailConfirmed: boolean;
 };
 
 type SubscriptionPatch = {
@@ -139,9 +159,12 @@ export async function GET() {
             page++;
         }
 
-        // Get subscriptions and profiles
-        const { data: subscriptions } = await supabase.from('subscriptions').select('user_id, tier, status, start_date, end_date, trial_end_date, plan, duration');
-        const { data: profiles } = await supabase.from('profiles').select('id, full_name');
+        // Get subscriptions, profiles, and workspace membership metadata.
+        const [{ data: subscriptions }, { data: profiles }, memberships] = await Promise.all([
+            supabase.from('subscriptions').select('user_id, tier, status, start_date, end_date, trial_end_date, plan, duration'),
+            supabase.from('profiles').select('id, full_name'),
+            listClientDeskWorkspaceMemberships(supabase),
+        ]);
 
         const subMap = new Map((subscriptions || []).map((s) => {
             const subscription = s as ClientDeskSubscription;
@@ -151,10 +174,45 @@ export async function GET() {
             const profile = p as ClientDeskProfile;
             return [profile.id, profile] as const;
         }));
+        const authMap = new Map(authUsers.map((user) => [user.id, user] as const));
+        const memberMemberships = memberships.filter(isClientDeskWorkspaceMember);
+        const memberUserIds = new Set(
+            memberMemberships
+                .map((row) => row.member_user_id)
+                .filter((id): id is string => Boolean(id)),
+        );
 
-        const formattedUsers = authUsers.map(user => {
+        const formattedUsers = authUsers
+            .filter((user) => !memberUserIds.has(user.id))
+            .map(user => {
             const subscription = subMap.get(user.id);
             const profile = profileMap.get(user.id);
+            const members: ClientDeskMemberView[] = memberMemberships
+                .filter((row) => row.owner_user_id === user.id)
+                .map((membership) => {
+                    const memberUser = membership.member_user_id
+                        ? authMap.get(membership.member_user_id)
+                        : null;
+                    const memberProfile = membership.member_user_id
+                        ? profileMap.get(membership.member_user_id)
+                        : null;
+                    return {
+                        id: membership.member_user_id,
+                        membershipId: membership.id,
+                        email: memberUser?.email || membership.email || 'No Email',
+                        name:
+                            memberProfile?.full_name ||
+                            memberUser?.user_metadata?.full_name ||
+                            membership.email.split('@')[0] ||
+                            'No Name',
+                        roleName: membership.role?.name || 'Member',
+                        roleSlug: membership.role?.slug || null,
+                        status: membership.status,
+                        createdAt: memberUser?.created_at || membership.invited_at,
+                        lastSignIn: memberUser?.last_sign_in_at || null,
+                        emailConfirmed: Boolean(memberUser?.email_confirmed_at),
+                    };
+                });
             return {
                 id: user.id,
                 email: user.email || 'No Email',
@@ -168,12 +226,17 @@ export async function GET() {
                 expiresAt: subscription?.end_date || subscription?.trial_end_date || null,
                 lastSignIn: user.last_sign_in_at || null,
                 emailConfirmed: !!user.email_confirmed_at,
+                members,
             };
         });
 
         formattedUsers.sort((a, b) => new Date(b.registeredSortAt).getTime() - new Date(a.registeredSortAt).getTime());
 
-        return NextResponse.json({ success: true, users: formattedUsers });
+        return NextResponse.json({
+            success: true,
+            users: formattedUsers,
+            memberCount: memberMemberships.length,
+        });
     } catch (error: unknown) {
         console.error('Client Desk users GET error:', error);
         return NextResponse.json({ success: false, message: getErrorMessage(error) }, { status: 500 });
@@ -193,6 +256,17 @@ export async function POST(request: NextRequest) {
         }
 
         const normalizedEmail = String(email).trim().toLowerCase();
+        const existingMember = await findClientDeskMemberByEmail(supabase, normalizedEmail);
+        if (existingMember) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    message: 'Email ini sudah menjadi member workspace Client Desk dan tidak dapat dibuatkan trial terpisah.',
+                },
+                { status: 409 },
+            );
+        }
+
         const { data: activeBlock, error: blockError } = await supabase
             .from('auth_email_blocklist')
             .select('id')
@@ -312,6 +386,25 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ success: false, message: 'User ID is required' }, { status: 400 });
         }
 
+        const membership = await findClientDeskMembershipByUserId(supabase, userId);
+        if (isClientDeskWorkspaceMember(membership)) {
+            return NextResponse.json(
+                { success: false, message: 'Workspace member cannot be deleted from License.' },
+                { status: 403 },
+            );
+        }
+
+        const activeMembers = await listActiveClientDeskMembersForOwner(supabase, userId);
+        if (activeMembers.length > 0) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    message: 'Owner masih memiliki member aktif. Nonaktifkan member dari Client Desk sebelum menghapus Owner.',
+                },
+                { status: 409 },
+            );
+        }
+
         const { error } = await supabase.auth.admin.deleteUser(userId);
         if (error) throw error;
 
@@ -330,6 +423,14 @@ export async function PATCH(request: NextRequest) {
 
         if (!userId) {
             return NextResponse.json({ success: false, message: 'User ID is required' }, { status: 400 });
+        }
+
+        const membership = await findClientDeskMembershipByUserId(supabase, userId);
+        if (isClientDeskWorkspaceMember(membership)) {
+            return NextResponse.json(
+                { success: false, message: 'Workspace member follows the Owner plan and cannot be edited.' },
+                { status: 403 },
+            );
         }
 
         const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);

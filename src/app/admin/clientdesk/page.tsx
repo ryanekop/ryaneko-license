@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Fragment, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { AdminToast } from '@/components/AdminToast';
 import { useLang } from '@/lib/providers';
@@ -21,6 +21,20 @@ interface UserData {
     plan: string | null;
     duration: string | null;
     expiresAt: string | null;
+    lastSignIn: string | null;
+    emailConfirmed: boolean;
+    members: WorkspaceMemberData[];
+}
+
+interface WorkspaceMemberData {
+    id: string | null;
+    membershipId: string;
+    email: string;
+    name: string;
+    roleName: string;
+    roleSlug: string | null;
+    status: string;
+    createdAt: string | null;
     lastSignIn: string | null;
     emailConfirmed: boolean;
 }
@@ -375,7 +389,15 @@ export default function ClientDeskPage() {
     const filteredUsers = users.filter((u) => {
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
-            if (!u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false;
+            const ownerMatches =
+                u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+            const memberMatches = u.members.some(
+                (member) =>
+                    member.name.toLowerCase().includes(q) ||
+                    member.email.toLowerCase().includes(q) ||
+                    member.roleName.toLowerCase().includes(q),
+            );
+            if (!ownerMatches && !memberMatches) return false;
         }
         if (filterPackage !== 'all' && getPackageFromTier(u.tier, u.status) !== filterPackage) {
             return false;
@@ -842,6 +864,7 @@ export default function ClientDeskPage() {
             {/* User Count */}
             {activeTab === 'users' && <div className="flex items-center gap-2 text-fg-muted text-sm">
                 <UsersIcon /> {t('clientdesk.userCount')}: <span className="font-semibold text-fg">{filteredUsers.length}</span>{(filterPackage !== 'all' || filterDuration !== 'all' || expiryFilter !== 'all') && <span className="text-fg-muted"> / {users.length}</span>}
+                <span className="text-fg-muted">• {t('clientdesk.memberCount')}: {filteredUsers.reduce((count, user) => count + user.members.length, 0)}</span>
             </div>}
 
             {/* Error */}
@@ -883,7 +906,8 @@ export default function ClientDeskPage() {
                             </thead>
                             <tbody className="divide-y divide-border-light">
                                 {sortedUsers.map((user, i) => (
-                                    <tr key={user.id} className="row-animate text-fg hover:bg-bg-secondary/50 transition-colors" style={{ animationDelay: `${i * 0.02}s` }}>
+                                    <Fragment key={user.id}>
+                                    <tr className="row-animate text-fg hover:bg-bg-secondary/50 transition-colors" style={{ animationDelay: `${i * 0.02}s` }}>
                                         <td className="px-4 py-2.5 text-sm text-fg-muted">{i + 1}</td>
                                         <td className="px-4 py-2.5 text-sm font-medium">{user.name}</td>
                                         <td className="px-4 py-2.5 text-sm">{user.email}</td>
@@ -941,6 +965,46 @@ export default function ClientDeskPage() {
                                             </div>
                                         </td>
                                     </tr>
+                                    {user.members.map((member) => (
+                                        <tr
+                                            key={member.membershipId}
+                                            className="bg-bg-secondary/35 text-fg-secondary"
+                                        >
+                                            <td className="px-4 py-2 text-sm text-fg-muted">↳</td>
+                                            <td className="px-4 py-2 text-sm">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium">{member.name}</span>
+                                                    <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-300">
+                                                        {member.roleName || t('clientdesk.member')}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-2 text-sm">{member.email}</td>
+                                            <td className="px-4 py-2">
+                                                <span className="rounded-full bg-bg-card px-2 py-0.5 text-xs font-medium text-fg-muted ring-1 ring-border">
+                                                    {t('clientdesk.followsOwnerPlan')}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-2 text-sm text-fg-muted">—</td>
+                                            <td className="px-4 py-2 text-sm text-fg-muted">—</td>
+                                            <td className="px-4 py-2 text-sm">{formatDate(member.createdAt)}</td>
+                                            <td className="px-4 py-2 text-sm">
+                                                {!member.emailConfirmed ? (
+                                                    <span className="text-fg-muted">{member.status}</span>
+                                                ) : member.lastSignIn ? (
+                                                    <span>{formatDateTime(member.lastSignIn)?.date} {formatDateTime(member.lastSignIn)?.time}</span>
+                                                ) : (
+                                                    <span className="text-fg-muted">—</span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-2 text-right">
+                                                <span className="rounded-full bg-gray-500/10 px-2 py-1 text-[10px] font-semibold text-fg-muted">
+                                                    {t('clientdesk.readOnly')}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    </Fragment>
                                 ))}
                             </tbody>
                         </table>
@@ -989,6 +1053,30 @@ export default function ClientDeskPage() {
                                         </button>
                                     </div>
                                 </div>
+                                {user.members.length > 0 && (
+                                    <div className="mt-3 space-y-2 border-t border-border-light pt-3">
+                                        {user.members.map((member) => (
+                                            <div
+                                                key={member.membershipId}
+                                                className="rounded-lg bg-bg-secondary/60 px-3 py-2.5"
+                                            >
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-medium text-fg">{member.name}</p>
+                                                        <p className="truncate text-xs text-fg-muted">{member.email}</p>
+                                                    </div>
+                                                    <span className="shrink-0 rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-300">
+                                                        {member.roleName || t('clientdesk.member')}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-fg-muted">
+                                                    <span>{t('clientdesk.followsOwnerPlan')}</span>
+                                                    <span>{t('clientdesk.readOnly')}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
