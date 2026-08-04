@@ -23,6 +23,7 @@ import {
     type FastpikTier,
     type SubscriptionDuration,
 } from '@/lib/mayar-subscription-catalog';
+import { isClientDeskLifetimeTier } from '@/lib/clientdesk-subscription';
 import {
     calculateImmediateSubscriptionPeriod,
     calculateScheduledSubscriptionPeriod,
@@ -335,7 +336,7 @@ function hasActivePaidSubscription(existing: ExistingSubscription | null, now = 
     if (!existing || existing.status !== 'active') return false;
 
     const existingTier = existing.tier || '';
-    if (existingTier === 'lifetime') return true;
+    if (isClientDeskLifetimeTier(existingTier)) return true;
     if (
         !(
             existingTier.startsWith('basic_') ||
@@ -739,7 +740,7 @@ async function processClientDeskSubscription(params: {
     }
 
     const existing = await getSubscriptionByUserId(supabase, userId);
-    if (existing?.tier === 'lifetime') {
+    if (existing && isClientDeskLifetimeTier(existing.tier)) {
         return {
             updated: false,
             scheduled: false,

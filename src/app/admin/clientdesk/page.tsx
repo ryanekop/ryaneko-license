@@ -5,6 +5,12 @@ import { createPortal } from 'react-dom';
 import { AdminToast } from '@/components/AdminToast';
 import { useLang } from '@/lib/providers';
 import { ClientDeskMaintenancePanel } from '@/components/ClientDeskMaintenancePanel';
+import {
+    isClientDeskLifetimeTier,
+    normalizeClientDeskTier,
+    resolveClientDeskDuration,
+    resolveClientDeskPlan,
+} from '@/lib/clientdesk-subscription';
 
 interface UserData {
     id: string;
@@ -69,22 +75,8 @@ interface BlocklistData {
 
 type SortMode = 'newest' | 'oldest' | 'expiresSoon' | 'expiresLatest';
 type ExpiryFilter = 'all' | 'expired' | 'active';
-type PackageFilter = 'all' | 'trial' | 'basic' | 'plus' | 'pro' | 'lifetime';
+type PackageFilter = 'all' | 'trial' | 'basic' | 'plus' | 'pro';
 type DurationFilter = 'all' | 'monthly' | 'quarterly' | 'yearly' | 'lifetime';
-
-const EDITABLE_TIERS = [
-    'free',
-    'basic_monthly',
-    'basic_quarterly',
-    'basic_yearly',
-    'plus_monthly',
-    'plus_quarterly',
-    'plus_yearly',
-    'pro_monthly',
-    'pro_quarterly',
-    'pro_yearly',
-    'lifetime',
-];
 
 // SVG Icons
 const ClipboardIcon = () => (
@@ -149,28 +141,27 @@ const UnlockIcon = () => (
     </svg>
 );
 
-function getPackageFromTier(tier: string, status?: string): PackageFilter | 'none' {
+function getPackageFromTier(
+    tier: string,
+    status?: string,
+    plan?: string | null,
+): PackageFilter | 'none' {
     if (tier === 'free' || status === 'trial') {
         return 'trial';
     }
-    if (tier === 'lifetime') return 'lifetime';
-    if (tier.startsWith('basic_')) return 'basic';
-    if (tier.startsWith('plus_')) return 'plus';
-    if (tier.startsWith('pro_')) return 'pro';
-    return 'none';
+    return resolveClientDeskPlan({ tier, plan }) || 'none';
 }
 
-function getDurationFromTier(tier: string): DurationFilter | 'trial' | 'none' {
+function getDurationFromTier(
+    tier: string,
+    duration?: string | null,
+): DurationFilter | 'trial' | 'none' {
     if (tier === 'free') return 'trial';
-    if (tier === 'lifetime') return 'lifetime';
-    if (tier.endsWith('_monthly')) return 'monthly';
-    if (tier.endsWith('_quarterly')) return 'quarterly';
-    if (tier.endsWith('_yearly')) return 'yearly';
-    return 'none';
+    return resolveClientDeskDuration({ tier, duration }) || 'none';
 }
 
-function getTierBadge(tier: string, status?: string) {
-    const packageName = getPackageFromTier(tier, status);
+function getTierBadge(tier: string, status?: string, plan?: string | null) {
+    const packageName = getPackageFromTier(tier, status, plan);
     if (packageName === 'trial') {
         return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300">⏱️ Trial</span>;
     }
@@ -183,14 +174,11 @@ function getTierBadge(tier: string, status?: string) {
     if (packageName === 'pro') {
         return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">🔥 Pro</span>;
     }
-    if (packageName === 'lifetime') {
-        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">👑 Lifetime</span>;
-    }
     return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">No Plan</span>;
 }
 
-function getDurationBadge(tier: string) {
-    const duration = getDurationFromTier(tier);
+function getDurationBadge(tier: string, storedDuration?: string | null) {
+    const duration = getDurationFromTier(tier, storedDuration);
     if (duration === 'trial') {
         return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300">Trial</span>;
     }
@@ -234,16 +222,18 @@ function getTime(dateString: string | null | undefined, fallback = 0) {
 }
 
 function isUserExpired(user: UserData) {
-    return user.tier !== 'lifetime' && isExpired(user.expiresAt);
+    return !isClientDeskLifetimeTier(user.tier, user.duration) && isExpired(user.expiresAt);
 }
 
 function getExpirySortTime(user: UserData) {
-    if (user.tier === 'lifetime' || !user.expiresAt) return Number.POSITIVE_INFINITY;
+    if (isClientDeskLifetimeTier(user.tier, user.duration) || !user.expiresAt) {
+        return Number.POSITIVE_INFINITY;
+    }
     return getTime(user.expiresAt, Number.POSITIVE_INFINITY);
 }
 
-function getEditableTier(tier: string) {
-    return EDITABLE_TIERS.includes(tier) ? tier : 'free';
+function getEditableTier(user: UserData) {
+    return normalizeClientDeskTier(user) || 'free';
 }
 
 // Portal Dialog component
@@ -399,10 +389,10 @@ export default function ClientDeskPage() {
             );
             if (!ownerMatches && !memberMatches) return false;
         }
-        if (filterPackage !== 'all' && getPackageFromTier(u.tier, u.status) !== filterPackage) {
+        if (filterPackage !== 'all' && getPackageFromTier(u.tier, u.status, u.plan) !== filterPackage) {
             return false;
         }
-        if (filterDuration !== 'all' && getDurationFromTier(u.tier) !== filterDuration) {
+        if (filterDuration !== 'all' && getDurationFromTier(u.tier, u.duration) !== filterDuration) {
             return false;
         }
         if (expiryFilter === 'expired' && !isUserExpired(u)) return false;
@@ -739,9 +729,8 @@ export default function ClientDeskPage() {
                     { key: 'basic' as const, label: 'Basic' },
                     { key: 'plus' as const, label: 'Plus' },
                     { key: 'pro' as const, label: 'Pro' },
-                    { key: 'lifetime' as const, label: '👑 Lifetime' },
                 ].map((f) => {
-                    const count = f.key === 'all' ? users.length : users.filter(u => getPackageFromTier(u.tier, u.status) === f.key).length;
+                    const count = f.key === 'all' ? users.length : users.filter(u => getPackageFromTier(u.tier, u.status, u.plan) === f.key).length;
                     return (
                         <button
                             key={f.key}
@@ -767,7 +756,7 @@ export default function ClientDeskPage() {
                     { key: 'yearly' as const, label: 'Yearly' },
                     { key: 'lifetime' as const, label: 'Lifetime' },
                 ].map((f) => {
-                    const count = f.key === 'all' ? users.length : users.filter(u => getDurationFromTier(u.tier) === f.key).length;
+                    const count = f.key === 'all' ? users.length : users.filter(u => getDurationFromTier(u.tier, u.duration) === f.key).length;
                     return (
                         <button
                             key={f.key}
@@ -911,10 +900,10 @@ export default function ClientDeskPage() {
                                         <td className="px-4 py-2.5 text-sm text-fg-muted">{i + 1}</td>
                                         <td className="px-4 py-2.5 text-sm font-medium">{user.name}</td>
                                         <td className="px-4 py-2.5 text-sm">{user.email}</td>
-                                        <td className="px-4 py-2.5">{getTierBadge(user.tier, user.status)}</td>
-                                        <td className="px-4 py-2.5">{getDurationBadge(user.tier)}</td>
+                                        <td className="px-4 py-2.5">{getTierBadge(user.tier, user.status, user.plan)}</td>
+                                        <td className="px-4 py-2.5">{getDurationBadge(user.tier, user.duration)}</td>
                                         <td className="px-4 py-2.5 text-sm">
-                                            {user.tier === 'lifetime' ? (
+                                            {isClientDeskLifetimeTier(user.tier, user.duration) ? (
                                                 <span className="text-amber-500 font-medium">∞ {t('clientdesk.never')}</span>
                                             ) : (
                                                 <span className={isExpired(user.expiresAt) ? 'text-danger font-medium' : ''}>
@@ -947,7 +936,7 @@ export default function ClientDeskPage() {
                                                 <button
                                                     onClick={() => {
                                                         setEditUser(user);
-                                                        setSelectedTier(getEditableTier(user.tier));
+                                                        setSelectedTier(getEditableTier(user));
                                                         setExpiryDate(user.expiresAt ? new Date(user.expiresAt).toISOString().split('T')[0] : new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]);
                                                     }}
                                                     className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-blue-600 transition-all active:scale-90 flex items-center gap-1"
@@ -1019,12 +1008,12 @@ export default function ClientDeskPage() {
                                         <p className="font-semibold text-fg text-sm">{user.name}</p>
                                         <p className="text-fg-muted text-xs">{user.email}</p>
                                     </div>
-                                    {getTierBadge(user.tier, user.status)}
+                                    {getTierBadge(user.tier, user.status, user.plan)}
                                 </div>
                                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-border-light">
                                     <div className="text-xs text-fg-muted space-y-0.5">
-                                        <p className="flex items-center gap-1.5">{t('clientdesk.colDuration')}: {getDurationBadge(user.tier)}</p>
-                                        <p>{t('clientdesk.colExpiry')}: {user.tier === 'lifetime' ? <span className="text-amber-500">∞</span> : <span className={isExpired(user.expiresAt) ? 'text-danger' : ''}>{formatDate(user.expiresAt)}</span>}</p>
+                                        <p className="flex items-center gap-1.5">{t('clientdesk.colDuration')}: {getDurationBadge(user.tier, user.duration)}</p>
+                                        <p>{t('clientdesk.colExpiry')}: {isClientDeskLifetimeTier(user.tier, user.duration) ? <span className="text-amber-500">∞</span> : <span className={isExpired(user.expiresAt) ? 'text-danger' : ''}>{formatDate(user.expiresAt)}</span>}</p>
                                         <p>{t('clientdesk.colRegistered')}: {formatDate(user.createdAt)}</p>
                                         <p>{t('clientdesk.colLastLogin')}: {!user.emailConfirmed ? <span className="text-red-500 font-medium">⚠️ {t('clientdesk.unverified')}</span> : user.lastSignIn ? <span>{formatDateTime(user.lastSignIn)?.date} {formatDateTime(user.lastSignIn)?.time}</span> : '—'}</p>
                                     </div>
@@ -1038,7 +1027,7 @@ export default function ClientDeskPage() {
                                         <button
                                             onClick={() => {
                                                 setEditUser(user);
-                                                setSelectedTier(getEditableTier(user.tier));
+                                                setSelectedTier(getEditableTier(user));
                                                 setExpiryDate(user.expiresAt ? new Date(user.expiresAt).toISOString().split('T')[0] : new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]);
                                             }}
                                             className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-blue-600 transition-all active:scale-90 flex items-center gap-1"
@@ -1227,6 +1216,8 @@ export default function ClientDeskPage() {
                     {t('clientdesk.editDesc')} <strong>{editUser?.name}</strong>
                 </p>
 
+                {editUser && !isClientDeskLifetimeTier(editUser.tier, editUser.duration) ? (
+                    <>
                 {/* Set Expiry */}
                 <div className="space-y-2 mb-4">
                     <label className="text-sm font-medium text-fg">{t('clientdesk.setExpiry')}</label>
@@ -1252,6 +1243,12 @@ export default function ClientDeskPage() {
                     <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border" /></div>
                     <div className="relative flex justify-center"><span className="bg-bg-card px-3 text-xs text-fg-muted uppercase">{t('clientdesk.or')}</span></div>
                 </div>
+                    </>
+                ) : (
+                    <div className="mb-4 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+                        ∞ Lifetime aktif selamanya dan tidak memiliki tanggal kedaluwarsa.
+                    </div>
+                )}
 
                 {/* Change Tier */}
                 <div className="space-y-2">
@@ -1266,13 +1263,15 @@ export default function ClientDeskPage() {
                             <option value="basic_monthly">Basic Monthly</option>
                             <option value="basic_quarterly">Basic Quarterly</option>
                             <option value="basic_yearly">Basic Yearly</option>
+                            <option value="basic_lifetime">👑 Basic Lifetime</option>
                             <option value="plus_monthly">Plus Monthly</option>
                             <option value="plus_quarterly">Plus Quarterly</option>
                             <option value="plus_yearly">Plus Yearly</option>
+                            <option value="plus_lifetime">👑 Plus Lifetime</option>
                             <option value="pro_monthly">Pro Monthly</option>
                             <option value="pro_quarterly">Pro Quarterly</option>
                             <option value="pro_yearly">Pro Yearly</option>
-                            <option value="lifetime">👑 Lifetime</option>
+                            <option value="pro_lifetime">👑 Pro Lifetime</option>
                         </select>
                         <button
                             onClick={handleChangeTier}

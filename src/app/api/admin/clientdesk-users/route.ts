@@ -9,6 +9,15 @@ import {
     listClientDeskWorkspaceMemberships,
 } from '@/lib/clientdesk-workspace';
 import { escapeTelegramHtml, notifyAlert, notifyInfo } from '@/lib/telegram';
+import {
+    getClientDeskTierMetadata,
+    getClientDeskTierPeriod,
+    isClientDeskLifetimeTier,
+    normalizeClientDeskTier,
+    parseClientDeskTier,
+    resolveClientDeskDuration,
+    resolveClientDeskPlan,
+} from '@/lib/clientdesk-subscription';
 
 type ClientDeskSubscription = {
     user_id: string;
@@ -45,35 +54,6 @@ type SubscriptionPatch = {
     updated_at?: string;
 };
 
-type SubscriptionPlan = 'basic' | 'plus' | 'pro' | null;
-type SubscriptionDuration = 'monthly' | 'quarterly' | 'yearly' | 'lifetime' | null;
-
-type SubscriptionTier =
-    | 'free'
-    | 'basic_monthly'
-    | 'basic_quarterly'
-    | 'basic_yearly'
-    | 'plus_monthly'
-    | 'plus_quarterly'
-    | 'plus_yearly'
-    | 'pro_monthly'
-    | 'pro_quarterly'
-    | 'pro_yearly'
-    | 'lifetime';
-
-const VALID_TIERS: SubscriptionTier[] = [
-    'free',
-    'basic_monthly',
-    'basic_quarterly',
-    'basic_yearly',
-    'plus_monthly',
-    'plus_quarterly',
-    'plus_yearly',
-    'pro_monthly',
-    'pro_quarterly',
-    'pro_yearly',
-    'lifetime',
-];
 const ADMIN_TRIAL_DAYS = 7;
 
 function getErrorMessage(error: unknown) {
@@ -103,37 +83,6 @@ function getLatestDate(...dates: Array<string | null | undefined>) {
     }, 0);
 
     return latest > 0 ? new Date(latest).toISOString() : null;
-}
-
-function parseTier(tier: unknown): SubscriptionTier | null {
-    return typeof tier === 'string' && VALID_TIERS.includes(tier as SubscriptionTier)
-        ? tier as SubscriptionTier
-        : null;
-}
-
-function getTierPeriod(tier: SubscriptionTier) {
-    const now = new Date();
-    const expiry = new Date(now);
-
-    if (tier === 'free') {
-        expiry.setDate(expiry.getDate() + ADMIN_TRIAL_DAYS);
-        return { startDate: now.toISOString(), endDate: null, trialEndDate: expiry.toISOString() };
-    }
-
-    if (tier === 'basic_monthly' || tier === 'plus_monthly' || tier === 'pro_monthly') expiry.setMonth(expiry.getMonth() + 1);
-    else if (tier === 'basic_quarterly' || tier === 'plus_quarterly' || tier === 'pro_quarterly') expiry.setMonth(expiry.getMonth() + 3);
-    else if (tier === 'basic_yearly' || tier === 'plus_yearly' || tier === 'pro_yearly') expiry.setFullYear(expiry.getFullYear() + 1);
-    else return { startDate: now.toISOString(), endDate: null, trialEndDate: null };
-
-    return { startDate: now.toISOString(), endDate: expiry.toISOString(), trialEndDate: null };
-}
-
-function getTierMetadata(tier: SubscriptionTier): { plan: SubscriptionPlan; duration: SubscriptionDuration } {
-    if (tier === 'free') return { plan: null, duration: null };
-    if (tier === 'lifetime') return { plan: null, duration: 'lifetime' };
-
-    const [plan, duration] = tier.split('_') as [Exclude<SubscriptionPlan, null>, Exclude<SubscriptionDuration, 'lifetime' | null>];
-    return { plan, duration };
 }
 
 function parseDateInput(value: unknown) {
@@ -219,10 +168,12 @@ export async function GET() {
                 name: profile?.full_name || user.user_metadata?.full_name || 'No Name',
                 createdAt: user.created_at,
                 registeredSortAt: getLatestDate(user.email_confirmed_at, subscription?.start_date, user.created_at) || user.created_at,
-                tier: subscription?.tier || 'none',
+                tier: subscription
+                    ? normalizeClientDeskTier(subscription) || subscription.tier
+                    : 'none',
                 status: subscription?.status || 'inactive',
-                plan: subscription?.plan || null,
-                duration: subscription?.duration || null,
+                plan: subscription ? resolveClientDeskPlan(subscription) : null,
+                duration: subscription ? resolveClientDeskDuration(subscription) : null,
                 expiresAt: subscription?.end_date || subscription?.trial_end_date || null,
                 lastSignIn: user.last_sign_in_at || null,
                 emailConfirmed: !!user.email_confirmed_at,
@@ -449,14 +400,20 @@ export async function PATCH(request: NextRequest) {
 
             const { data: currentSub, error: currentSubError } = await supabase
                 .from('subscriptions')
-                .select('tier, status')
+                .select('tier, status, duration')
                 .eq('user_id', userId)
                 .maybeSingle();
 
             if (currentSubError) throw currentSubError;
 
             const updateData: SubscriptionPatch = {};
-            const sub = currentSub as Pick<ClientDeskSubscription, 'tier' | 'status'> | null;
+            const sub = currentSub as Pick<ClientDeskSubscription, 'tier' | 'status' | 'duration'> | null;
+            if (sub && isClientDeskLifetimeTier(sub.tier, sub.duration)) {
+                return NextResponse.json(
+                    { success: false, message: 'Lifetime subscriptions do not have an expiry date' },
+                    { status: 400 },
+                );
+            }
             if (!sub || sub.status === 'trial' || sub.tier === 'free') {
                 updateData.trial_end_date = parsedExpiryDate;
                 updateData.end_date = null;
@@ -479,13 +436,13 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ success: true, message: 'Expiry date updated' });
 
         } else if (action === 'change_tier') {
-            const nextTier = parseTier(tier);
+            const nextTier = parseClientDeskTier(tier);
             if (!nextTier) {
                 return NextResponse.json({ success: false, message: 'Invalid tier' }, { status: 400 });
             }
 
-            const period = getTierPeriod(nextTier);
-            const metadata = getTierMetadata(nextTier);
+            const period = getClientDeskTierPeriod(nextTier);
+            const metadata = getClientDeskTierMetadata(nextTier);
             const { error } = await supabase.from('subscriptions').upsert({
                 user_id: userId,
                 tier: nextTier,

@@ -7,6 +7,7 @@ import {
     type ClientDeskTier,
     type SubscriptionDuration,
 } from '@/lib/mayar-subscription-catalog';
+import { isClientDeskLifetimeTier } from '@/lib/clientdesk-subscription';
 
 type SubscriptionHistoryEventType = 'purchased' | 'renewed' | 'changed';
 
@@ -127,7 +128,7 @@ function resolveSubscriptionHistoryEvent(
     const hadPaidPlan =
         existing?.status === 'active' &&
         (
-            existingTier === 'lifetime' ||
+            isClientDeskLifetimeTier(existingTier) ||
             existingTier.startsWith('basic_') ||
             existingTier.startsWith('plus_') ||
             existingTier.startsWith('pro_')
