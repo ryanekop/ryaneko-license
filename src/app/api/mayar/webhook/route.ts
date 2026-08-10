@@ -7,7 +7,6 @@ import { findClientDeskMemberByEmail } from '@/lib/clientdesk-workspace';
 import { escapeTelegramHtml, notifyPurchase, notifyAlert } from '@/lib/telegram';
 import { sendEmail } from '@/lib/resend';
 import { getEmailHtml, getEmailSubject } from '@/lib/email-templates';
-import { generateHash } from '@/lib/crypto';
 import {
     BUNDLE_AMOUNT_TOLERANCE,
     CLIENT_DESK_AMOUNT_TOLERANCE,
@@ -43,6 +42,27 @@ import type {
     Product,
     License
 } from '@/lib/types';
+
+type MayarCustomerFields = {
+    email?: string;
+    name?: string;
+    fullName?: string;
+};
+
+type MayarPaymentFields = {
+    status?: unknown;
+    customer?: MayarCustomerFields;
+    customerDetail?: MayarCustomerFields;
+    customerEmail?: string;
+    customerName?: string;
+    email?: string;
+    name?: string;
+    amount?: unknown;
+    totalAmount?: unknown;
+    gross_amount?: unknown;
+    transactionId?: string;
+    id?: string;
+};
 
 // Response helper
 function jsonResponse(status: string, message: string, statusCode = 200) {
@@ -365,7 +385,7 @@ function resolveSubscriptionHistoryEvent(
         : 'changed';
 }
 
-async function hasTransactionInSubscriptionHistory(supabase: any, transactionId: string): Promise<boolean> {
+async function hasTransactionInSubscriptionHistory(supabase: SupabaseClient, transactionId: string): Promise<boolean> {
     const { count, error } = await supabase
         .from('subscription_history')
         .select('id', { count: 'exact', head: true })
@@ -380,7 +400,7 @@ async function hasTransactionInSubscriptionHistory(supabase: any, transactionId:
 }
 
 async function insertSubscriptionHistory(params: {
-    supabase: any;
+    supabase: SupabaseClient;
     userId: string;
     subscriptionId: string | null;
     eventType: SubscriptionHistoryEventType;
@@ -441,7 +461,7 @@ async function insertSubscriptionHistory(params: {
     return data?.id as string | null;
 }
 
-async function hasTransactionInSubscriptions(supabase: any, transactionId: string): Promise<boolean> {
+async function hasTransactionInSubscriptions(supabase: SupabaseClient, transactionId: string): Promise<boolean> {
     const { count, error } = await supabase
         .from('subscriptions')
         .select('user_id', { count: 'exact', head: true })
@@ -455,7 +475,7 @@ async function hasTransactionInSubscriptions(supabase: any, transactionId: strin
     return (count || 0) > 0;
 }
 
-async function getSubscriptionByUserId(supabase: any, userId: string) {
+async function getSubscriptionByUserId(supabase: SupabaseClient, userId: string) {
     const { data } = await supabase
         .from('subscriptions')
         .select('id, user_id, tier, status, end_date, trial_end_date, mayar_transaction_id')
@@ -559,7 +579,7 @@ function buildBillingMetadata(params: {
     };
 }
 
-async function findUserIdByEmail(supabase: any, email: string): Promise<string | null> {
+async function findUserIdByEmail(supabase: SupabaseClient, email: string): Promise<string | null> {
     let page = 1;
     while (true) {
         const { data: authData, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
@@ -569,7 +589,7 @@ async function findUserIdByEmail(supabase: any, email: string): Promise<string |
         }
 
         const users = authData?.users || [];
-        const found = users.find((user: any) => user.email?.toLowerCase() === email.toLowerCase());
+        const found = users.find((user) => user.email?.toLowerCase() === email.toLowerCase());
         if (found) return found.id;
         if (users.length < 1000) break;
         page += 1;
@@ -627,7 +647,7 @@ async function notifyAuthEmailFailure(params: {
 
 async function ensureBundleUser(params: {
     app: BundleApp;
-    supabase: any;
+    supabase: SupabaseClient;
     email: string;
     name: string;
     siteUrl: string;
@@ -867,7 +887,7 @@ type BundleSubscriptionUpsertResult = {
 
 async function upsertBundleSubscription(params: {
     app: BundleApp;
-    supabase: any;
+    supabase: SupabaseClient;
     userId: string;
     tier: SubscriptionTier;
     plan?: ClientDeskPlan;
@@ -1003,33 +1023,34 @@ async function handleFastpikSubscription(
     const fastpikSupabase = getFastpikSupabase();
     const FASTPIK_SITE_URL = process.env.FASTPIK_SITE_URL || 'https://fastpik.id';
 
-    const data = payload.data || payload;
-    const rawStatus = (data as any).status || (payload as any).status;
+    const data = (payload.data || payload) as MayarPaymentFields;
+    const directPayload = payload as MayarPaymentFields;
+    const rawStatus = data.status || directPayload.status;
 
     // Extract customer info
-    const customer = (data as any).customer || (data as any).customerDetail || (payload as any).customer || {};
+    const customer = data.customer || data.customerDetail || directPayload.customer || {};
     const email =
         orderData.customerEmail ||
         orderData.customer_email ||
-        (data as any).customerEmail ||
-        (payload as any).customerEmail ||
+        data.customerEmail ||
+        directPayload.customerEmail ||
         customer.email ||
-        (data as any).email ||
-        (payload as any).email;
+        data.email ||
+        directPayload.email;
 
     const name =
         orderData.customerName ||
         orderData.customer_name ||
-        (data as any).customerName ||
-        (payload as any).customerName ||
+        data.customerName ||
+        directPayload.customerName ||
         customer.name ||
         customer.fullName ||
-        (data as any).name ||
-        (payload as any).name ||
+        data.name ||
+        directPayload.name ||
         'User';
 
-    const amount = (data as any).amount || (data as any).totalAmount || (data as any).gross_amount || (payload as any).amount || 0;
-    const transactionId = orderData.id || (data as any).transactionId || (payload as any).id || `TRX-${Date.now()}`;
+    const amount = data.amount || data.totalAmount || data.gross_amount || directPayload.amount || 0;
+    const transactionId = orderData.id || data.transactionId || directPayload.id || `TRX-${Date.now()}`;
     const productName = orderData.productName || orderData.product_name || payload.data?.productName || payload.data?.product_name || 'unknown';
     const mayarSource = extractMayarSource(getMayarCustomFields(orderData, payload));
 
@@ -1043,7 +1064,7 @@ async function handleFastpikSubscription(
     // Check payment status
     const statusStr = rawStatus?.toString().toLowerCase();
     const isSuccess = rawStatus === true ||
-        ['success', 'settlement', 'paid', 'successful'].includes(statusStr);
+        ['success', 'settlement', 'paid', 'successful'].includes(statusStr as string);
 
     if (!isSuccess) {
         return jsonResponse('Success', `Ignored status: ${rawStatus}`);
@@ -1202,33 +1223,34 @@ async function handleClientDeskSubscription(
     const clientdeskSupabase = getClientDeskSupabase();
     const CLIENTDESK_SITE_URL = process.env.CLIENTDESK_SITE_URL || 'https://clientdesk.id';
 
-    const data = payload.data || payload;
-    const rawStatus = (data as any).status || (payload as any).status;
+    const data = (payload.data || payload) as MayarPaymentFields;
+    const directPayload = payload as MayarPaymentFields;
+    const rawStatus = data.status || directPayload.status;
 
     // Extract customer info
-    const customer = (data as any).customer || (data as any).customerDetail || (payload as any).customer || {};
+    const customer = data.customer || data.customerDetail || directPayload.customer || {};
     const email =
         orderData.customerEmail ||
         orderData.customer_email ||
-        (data as any).customerEmail ||
-        (payload as any).customerEmail ||
+        data.customerEmail ||
+        directPayload.customerEmail ||
         customer.email ||
-        (data as any).email ||
-        (payload as any).email;
+        data.email ||
+        directPayload.email;
 
     const name =
         orderData.customerName ||
         orderData.customer_name ||
-        (data as any).customerName ||
-        (payload as any).customerName ||
+        data.customerName ||
+        directPayload.customerName ||
         customer.name ||
         customer.fullName ||
-        (data as any).name ||
-        (payload as any).name ||
+        data.name ||
+        directPayload.name ||
         'User';
 
-    const amount = (data as any).amount || (data as any).totalAmount || (data as any).gross_amount || (payload as any).amount || 0;
-    const transactionId = orderData.id || (data as any).transactionId || (payload as any).id || `TRX-${Date.now()}`;
+    const amount = data.amount || data.totalAmount || data.gross_amount || directPayload.amount || 0;
+    const transactionId = orderData.id || data.transactionId || directPayload.id || `TRX-${Date.now()}`;
     const mayarSource = extractMayarSource(getMayarCustomFields(orderData, payload));
 
     console.log(`[Client Desk Webhook] Email: ${email}, Name: ${name}, Status: ${rawStatus}, Amount: ${amount}`);
@@ -1241,7 +1263,7 @@ async function handleClientDeskSubscription(
     // Check payment status
     const statusStr = rawStatus?.toString().toLowerCase();
     const isSuccess = rawStatus === true ||
-        ['success', 'settlement', 'paid', 'successful'].includes(statusStr);
+        ['success', 'settlement', 'paid', 'successful'].includes(statusStr as string);
 
     if (!isSuccess) {
         return jsonResponse('Success', `Ignored status: ${rawStatus}`);
@@ -1431,33 +1453,34 @@ async function handleBundleSubscription(
     const CLIENTDESK_SITE_URL = process.env.CLIENTDESK_SITE_URL || 'https://clientdesk.id';
     const FASTPIK_SITE_URL = process.env.FASTPIK_SITE_URL || 'https://fastpik.id';
 
-    const data = payload.data || payload;
-    const rawStatus = (data as any).status || (payload as any).status;
-    const customer = (data as any).customer || (data as any).customerDetail || (payload as any).customer || {};
+    const data = (payload.data || payload) as MayarPaymentFields;
+    const directPayload = payload as MayarPaymentFields;
+    const rawStatus = data.status || directPayload.status;
+    const customer = data.customer || data.customerDetail || directPayload.customer || {};
 
     const email =
         orderData.customerEmail ||
         orderData.customer_email ||
-        (data as any).customerEmail ||
-        (payload as any).customerEmail ||
+        data.customerEmail ||
+        directPayload.customerEmail ||
         customer.email ||
-        (data as any).email ||
-        (payload as any).email;
+        data.email ||
+        directPayload.email;
 
     const name =
         orderData.customerName ||
         orderData.customer_name ||
-        (data as any).customerName ||
-        (payload as any).customerName ||
+        data.customerName ||
+        directPayload.customerName ||
         customer.name ||
         customer.fullName ||
-        (data as any).name ||
-        (payload as any).name ||
+        data.name ||
+        directPayload.name ||
         'User';
 
-    const amount = (data as any).amount || (data as any).totalAmount || (data as any).gross_amount || (payload as any).amount || 0;
+    const amount = data.amount || data.totalAmount || data.gross_amount || directPayload.amount || 0;
     const amountNum = parseAmountNumber(amount);
-    const transactionId = orderData.id || (data as any).transactionId || (payload as any).id || `TRX-${Date.now()}`;
+    const transactionId = orderData.id || data.transactionId || directPayload.id || `TRX-${Date.now()}`;
     const productName = orderData.productName || orderData.product_name || payload.data?.productName || payload.data?.product_name || 'unknown';
     const mayarSource = extractMayarSource(getMayarCustomFields(orderData, payload));
 
@@ -1776,7 +1799,7 @@ async function sendLicenseEmail(
 
         console.log(`[License Email] ✅ Sent to ${email} for ${product.name}`);
         return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('[License Email] Error:', err);
         return false;
     }

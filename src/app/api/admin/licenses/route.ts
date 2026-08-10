@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { escapeTelegramHtml, notifyAlert } from '@/lib/telegram';
 import { getEmailHtml, getEmailSubject } from '@/lib/email-templates';
 import { sendEmail } from '@/lib/resend';
-import type { License } from '@/lib/types';
+import type { License, Purchase } from '@/lib/types';
 
 const tg = (value: unknown) => escapeTelegramHtml(value);
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -137,7 +137,7 @@ export async function PATCH(request: NextRequest) {
                 return NextResponse.json({ error: 'Product not found for this license' }, { status: 400 });
             }
 
-            let purchase: any = null;
+            let purchase: Purchase | null = null;
             if (selectedLicense.order_id) {
                 const { data: purchaseData, error: purchaseError } = await supabaseAdmin
                     .from('purchases')

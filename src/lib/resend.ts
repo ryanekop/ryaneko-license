@@ -41,8 +41,9 @@ export async function sendEmail({ to, subject, html }: SendEmailParams): Promise
         console.log(`[Resend] ✅ Email sent to ${to}, id: ${result.id}`);
         return { success: true, id: result.id };
 
-    } catch (err: any) {
+    } catch (err: unknown) {
+        const caughtError = err as { message?: string };
         console.error('[Resend] Send error:', err);
-        return { success: false, error: err.message };
+        return { success: false, error: caughtError.message };
     }
 }

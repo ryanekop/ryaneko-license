@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
 import {
     detectBundlePlanFromAmount,
@@ -28,6 +29,43 @@ type BackfillResult = {
     productName: string;
     action: 'inserted' | 'skipped' | 'error';
     reason?: string;
+};
+
+type MayarCustomer = {
+    email?: string;
+    name?: string;
+    fullName?: string;
+};
+
+type MayarPayloadData = {
+    status?: unknown;
+    transactionStatus?: unknown;
+    customer?: MayarCustomer;
+    customerDetail?: MayarCustomer;
+    productName?: string;
+    product_name?: string;
+    customerEmail?: string;
+    customer_email?: string;
+    customerName?: string;
+    customer_name?: string;
+    email?: string;
+    name?: string;
+    amount?: unknown;
+    totalAmount?: unknown;
+    gross_amount?: unknown;
+    transactionId?: string;
+    id?: string;
+    createdAt?: unknown;
+    updatedAt?: unknown;
+};
+
+type MayarPayload = MayarPayloadData & {
+    event?: string;
+    data?: MayarPayloadData;
+};
+
+type MayarHistoryRow = {
+    payload?: string | MayarPayload | null;
 };
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
@@ -126,20 +164,20 @@ function resolveSubscriptionHistoryEvent(
     return existingTier === nextTier ? 'renewed' : 'changed';
 }
 
-function isPaymentReceived(payload: any) {
+function isPaymentReceived(payload: MayarPayload) {
     return (payload?.event || '') === 'payment.received';
 }
 
-function isPaymentSuccess(data: any) {
+function isPaymentSuccess(data: MayarPayloadData) {
     const rawStatus = data?.status || data?.transactionStatus;
     const statusStr = rawStatus?.toString().toLowerCase();
     return rawStatus === true || ['success', 'settlement', 'paid', 'successful'].includes(statusStr || '');
 }
 
-function getPayloadFromHistoryRow(row: any) {
+function getPayloadFromHistoryRow(row: MayarHistoryRow): MayarPayload | null {
     if (typeof row?.payload === 'string') {
         try {
-            return JSON.parse(row.payload);
+            return JSON.parse(row.payload) as MayarPayload;
         } catch {
             return null;
         }
@@ -147,21 +185,21 @@ function getPayloadFromHistoryRow(row: any) {
     return row?.payload && typeof row.payload === 'object' ? row.payload : null;
 }
 
-async function findUserIdByEmail(supabase: any, email: string): Promise<string | null> {
+async function findUserIdByEmail(supabase: SupabaseClient, email: string): Promise<string | null> {
     let page = 1;
     while (true) {
         const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
         if (error) throw error;
 
         const users = data?.users || [];
-        const found = users.find((user: any) => user.email?.toLowerCase() === email.toLowerCase());
+        const found = users.find((user) => user.email?.toLowerCase() === email.toLowerCase());
         if (found) return found.id;
         if (users.length < 1000) return null;
         page += 1;
     }
 }
 
-async function getSubscriptionByUserId(supabase: any, userId: string) {
+async function getSubscriptionByUserId(supabase: SupabaseClient, userId: string) {
     const { data } = await supabase
         .from('subscriptions')
         .select('id, user_id, tier, status, end_date, trial_end_date, mayar_transaction_id')
@@ -170,7 +208,7 @@ async function getSubscriptionByUserId(supabase: any, userId: string) {
     return data as ExistingSubscription | null;
 }
 
-async function hasHistoryTransaction(supabase: any, transactionId: string) {
+async function hasHistoryTransaction(supabase: SupabaseClient, transactionId: string) {
     const { count, error } = await supabase
         .from('subscription_history')
         .select('id', { count: 'exact', head: true })
@@ -180,7 +218,7 @@ async function hasHistoryTransaction(supabase: any, transactionId: string) {
     return (count || 0) > 0;
 }
 
-async function processClientDeskPayload(payload: any, dryRun: boolean): Promise<BackfillResult> {
+async function processClientDeskPayload(payload: MayarPayload, dryRun: boolean): Promise<BackfillResult> {
     const data = payload?.data || payload;
     const customer = data?.customer || data?.customerDetail || payload?.customer || {};
     const productName = data?.productName || data?.product_name || payload?.productName || payload?.product_name || '';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useTheme, useLang } from '@/lib/providers';
 
@@ -222,7 +222,7 @@ export default function PanelPage() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="link-card"
-                            style={{ '--delay': `${index * 50}ms` } as any}
+                            style={{ '--delay': `${index * 50}ms` } as CSSProperties & { '--delay': string }}
                         >
                             <div className="panel-card flex flex-col items-center text-center p-8 bg-bg-card border border-border rounded-2xl group">
                                 <div className={`w-16 h-16 rounded-2xl ${link.bg} flex items-center justify-center mb-5`}>

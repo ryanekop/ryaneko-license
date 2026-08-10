@@ -23,7 +23,6 @@ const DRY_RUN = process.argv.includes('--dry-run');
 // ─── Helpers ─────────────────────────────────────────────────────
 function parseCSV(content: string) {
     const lines = content.split('\n').map(l => l.replace(/\r$/, ''));
-    const header = lines[0].split(',');
 
     return lines.slice(1)
         .filter(line => line.trim() !== '')
