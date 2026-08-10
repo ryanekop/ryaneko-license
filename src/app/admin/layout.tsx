@@ -4,6 +4,8 @@ import { useState, useEffect, ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTheme, useLang } from '@/lib/providers';
+import AdminAuthGate from '@/components/AdminAuthGate';
+import { getAdminBrowserClient } from '@/lib/admin-browser-auth';
 
 interface AdminLayoutProps {
     children: ReactNode;
@@ -120,8 +122,8 @@ const TAB_ICONS: Record<string, React.ReactNode> = {
     'generate': <GenerateIcon />,
 };
 
-export default function AdminLayout({ children }: AdminLayoutProps) {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
+function AdminShell({ children }: AdminLayoutProps) {
+    const [isAuthenticated, setIsAuthenticated] = useState(true);
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -142,10 +144,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         { name: t('tab.generate'), href: '/admin/generate', slug: 'generate' },
     ];
 
-    useEffect(() => {
-        const saved = sessionStorage.getItem('admin_auth');
-        if (saved === 'true') setIsAuthenticated(true);
-    }, []);
+    useEffect(() => undefined, []);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -160,7 +159,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             });
             if (res.ok) {
                 setIsAuthenticated(true);
-                sessionStorage.setItem('admin_auth', 'true');
+                // This legacy fallback is unreachable; AdminAuthGate owns authentication.
             } else {
                 setError(t('login.error'));
             }
@@ -312,9 +311,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                             </button>
                             <button
                                 onClick={() => {
-                                    void fetch('/api/admin/auth', { method: 'DELETE' });
-                                    sessionStorage.removeItem('admin_auth');
-                                    setIsAuthenticated(false);
+                                    void getAdminBrowserClient().auth.signOut().finally(() => window.location.reload());
                                 }}
                                 className="ml-1 h-8 px-3 text-xs text-danger border border-border rounded-lg cursor-pointer hover:bg-danger/10 hover:border-danger/30 transition-all active:scale-95 flex items-center gap-1.5 font-medium"
                             >
@@ -353,4 +350,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             </main>
         </div>
     );
+}
+
+export default function AdminLayout({ children }: AdminLayoutProps) {
+    return <AdminAuthGate><AdminShell>{children}</AdminShell></AdminAuthGate>;
 }

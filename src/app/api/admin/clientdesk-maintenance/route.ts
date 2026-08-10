@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
-import { isSameOriginRequest, verifyAdminRequest } from '@/lib/admin-session';
+import { requireAdmin } from '@/lib/admin-auth';
 
 type MaintenanceMode = 'off' | 'on' | 'scheduled';
 type AnnouncementKind = 'maintenance' | 'warning' | 'announcement';
@@ -19,24 +19,9 @@ function getPreviewUrls() {
     };
 }
 
-function unauthorized() {
-    return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 },
-    );
-}
-
-function forbidden() {
-    return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 },
-    );
-}
-
-function assertAdmin(request: NextRequest) {
-    if (!verifyAdminRequest(request)) return unauthorized();
-    if (!isSameOriginRequest(request)) return forbidden();
-    return null;
+async function assertAdmin(request: NextRequest) {
+    const auth = await requireAdmin(request);
+    return auth.ok ? null : auth.response;
 }
 
 function normalizeIso(value: unknown) {
@@ -124,7 +109,7 @@ function validatePayload(body: Record<string, unknown>) {
 }
 
 export async function GET(request: NextRequest) {
-    const authError = assertAdmin(request);
+    const authError = await assertAdmin(request);
     if (authError) return authError;
 
     try {
@@ -154,7 +139,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-    const authError = assertAdmin(request);
+    const authError = await assertAdmin(request);
     if (authError) return authError;
 
     try {

@@ -11,6 +11,7 @@ import {
     resolveClientDeskDuration,
     resolveClientDeskPlan,
 } from '@/lib/clientdesk-subscription';
+import { getAdminBrowserClient } from '@/lib/admin-browser-auth';
 
 interface UserData {
     id: string;
@@ -72,6 +73,9 @@ interface BlocklistData {
     created_at: string;
     updated_at: string;
 }
+
+type MfaResetTarget = { id: string; email: string; name: string };
+type MfaFactorDetail = { id: string; type: string; status: string; friendlyName: string | null; createdAt: string };
 
 type SortMode = 'newest' | 'oldest' | 'expiresSoon' | 'expiresLatest';
 type ExpiryFilter = 'all' | 'expired' | 'active';
@@ -289,6 +293,52 @@ export default function ClientDeskPage() {
     const [blockEmail, setBlockEmail] = useState('');
     const [blockReason, setBlockReason] = useState('');
     const [blockActionLoading, setBlockActionLoading] = useState<string | null>(null);
+    const [mfaTarget, setMfaTarget] = useState<MfaResetTarget | null>(null);
+    const [mfaFactors, setMfaFactors] = useState<MfaFactorDetail[]>([]);
+    const [mfaStatusLoading, setMfaStatusLoading] = useState(false);
+    const [mfaConfirmEmail, setMfaConfirmEmail] = useState('');
+    const [mfaReason, setMfaReason] = useState('');
+    const [adminTotpFactors, setAdminTotpFactors] = useState<Array<{ id: string; friendly_name?: string }>>([]);
+    const [adminTotpFactorId, setAdminTotpFactorId] = useState('');
+    const [adminTotpCode, setAdminTotpCode] = useState('');
+    const [mfaResetLoading, setMfaResetLoading] = useState(false);
+    const [mfaResetError, setMfaResetError] = useState('');
+
+    const openMfaReset = async (target: MfaResetTarget) => {
+        setMfaTarget(target); setMfaFactors([]); setMfaConfirmEmail(''); setMfaReason(''); setAdminTotpCode(''); setMfaResetError(''); setMfaStatusLoading(true);
+        const supabase = getAdminBrowserClient();
+        const [statusResponse, adminFactorResult] = await Promise.all([
+            fetch(`/api/admin/clientdesk-mfa?userId=${encodeURIComponent(target.id)}`, { cache: 'no-store' }),
+            supabase.auth.mfa.listFactors(),
+        ]);
+        const status = await statusResponse.json().catch(() => null);
+        if (!statusResponse.ok) setMfaResetError(status?.outcome || 'Gagal mengambil status MFA.');
+        else setMfaFactors(status.factors || []);
+        const verifiedAdminFactors = (adminFactorResult.data?.totp || []).filter((factor) => factor.status === 'verified');
+        setAdminTotpFactors(verifiedAdminFactors);
+        setAdminTotpFactorId(verifiedAdminFactors[0]?.id || '');
+        setMfaStatusLoading(false);
+    };
+
+    const handleMfaReset = async () => {
+        if (!mfaTarget || !adminTotpFactorId || adminTotpCode.length !== 6) return;
+        setMfaResetLoading(true); setMfaResetError('');
+        try {
+            const supabase = getAdminBrowserClient();
+            const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: adminTotpFactorId });
+            const verified = challenge ? await supabase.auth.mfa.verify({ factorId: adminTotpFactorId, challengeId: challenge.id, code: adminTotpCode }) : null;
+            if (challengeError || verified?.error) throw new Error(challengeError?.message || verified?.error?.message || 'Kode admin tidak valid.');
+            const response = await fetch('/api/admin/clientdesk-mfa/reset', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: mfaTarget.id, email: mfaConfirmEmail, reason: mfaReason }),
+            });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok && response.status !== 207) throw new Error(payload?.outcome || payload?.error || 'Reset gagal.');
+            setToast({ success: payload?.outcome === 'success' || payload?.outcome === 'no_factors', message: `Reset 2FA: ${payload?.outcome || 'selesai'}` });
+            setMfaTarget(null);
+        } catch (caught) { setMfaResetError(caught instanceof Error ? caught.message : 'Reset gagal.'); }
+        finally { setMfaResetLoading(false); }
+    };
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -926,6 +976,7 @@ export default function ClientDeskPage() {
                                         </td>
                                         <td className="px-4 py-2.5 text-right">
                                             <div className="flex justify-end gap-1.5">
+                                                <button onClick={() => void openMfaReset(user)} className="px-2.5 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 flex items-center gap-1"><ShieldIcon /> 2FA</button>
                                                 <button
                                                     onClick={() => openAssignDialog(user)}
                                                     className="px-2.5 py-1.5 bg-indigo-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-indigo-600 transition-all active:scale-90 flex items-center gap-1"
@@ -987,9 +1038,7 @@ export default function ClientDeskPage() {
                                                 )}
                                             </td>
                                             <td className="px-4 py-2 text-right">
-                                                <span className="rounded-full bg-gray-500/10 px-2 py-1 text-[10px] font-semibold text-fg-muted">
-                                                    {t('clientdesk.readOnly')}
-                                                </span>
+                                                {member.id ? <button onClick={() => void openMfaReset({ id: member.id!, email: member.email, name: member.name })} className="px-2.5 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700"><ShieldIcon /> 2FA</button> : <span className="rounded-full bg-gray-500/10 px-2 py-1 text-[10px] font-semibold text-fg-muted">{t('clientdesk.readOnly')}</span>}
                                             </td>
                                         </tr>
                                     ))}
@@ -1018,6 +1067,7 @@ export default function ClientDeskPage() {
                                         <p>{t('clientdesk.colLastLogin')}: {!user.emailConfirmed ? <span className="text-red-500 font-medium">⚠️ {t('clientdesk.unverified')}</span> : user.lastSignIn ? <span>{formatDateTime(user.lastSignIn)?.date} {formatDateTime(user.lastSignIn)?.time}</span> : '—'}</p>
                                     </div>
                                     <div className="flex gap-1.5">
+                                        <button onClick={() => void openMfaReset(user)} className="px-2.5 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium"><ShieldIcon /> 2FA</button>
                                         <button
                                             onClick={() => openAssignDialog(user)}
                                             className="px-2.5 py-1.5 bg-indigo-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-indigo-600 transition-all active:scale-90 flex items-center gap-1"
@@ -1193,6 +1243,19 @@ export default function ClientDeskPage() {
             {activeTab === 'maintenance' && <ClientDeskMaintenancePanel />}
 
             {/* Delete Dialog */}
+            <Dialog open={!!mfaTarget} onClose={() => !mfaResetLoading && setMfaTarget(null)}>
+                <h3 className="text-lg font-semibold text-fg mb-1">Bantu Reset 2FA</h3>
+                <p className="text-sm text-fg-muted mb-4"><strong>{mfaTarget?.name}</strong> ({mfaTarget?.email})</p>
+                {mfaStatusLoading ? <p className="text-sm text-fg-muted">Mengambil detail faktor…</p> : <div className="space-y-4">
+                    <div className="rounded-xl border border-border bg-bg p-3 text-sm"><p className="font-medium text-fg">Faktor target: {mfaFactors.length}</p>{mfaFactors.map((factor) => <p key={factor.id} className="text-xs text-fg-muted mt-1">{factor.friendlyName || factor.type} · {factor.status} · {formatDate(factor.createdAt)}</p>)}</div>
+                    <input type="email" value={mfaConfirmEmail} onChange={(event) => setMfaConfirmEmail(event.target.value)} placeholder={`Ketik ulang: ${mfaTarget?.email || ''}`} className="w-full px-3 py-2.5 bg-bg border border-border rounded-xl text-fg text-sm" />
+                    <textarea value={mfaReason} onChange={(event) => setMfaReason(event.target.value)} placeholder="Alasan reset (wajib)" className="w-full min-h-20 px-3 py-2.5 bg-bg border border-border rounded-xl text-fg text-sm" />
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2"><p className="text-sm text-fg">Verifikasi ulang TOTP admin (berlaku 5 menit)</p><select value={adminTotpFactorId} onChange={(event) => setAdminTotpFactorId(event.target.value)} className="w-full px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm">{adminTotpFactors.map((factor, index) => <option key={factor.id} value={factor.id}>{factor.friendly_name || `Admin TOTP ${index + 1}`}</option>)}</select><input inputMode="numeric" maxLength={6} value={adminTotpCode} onChange={(event) => setAdminTotpCode(event.target.value.replace(/\D/g, ''))} placeholder="Kode 6 digit" className="w-full px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm text-center tracking-[.25em]" /></div>
+                    {mfaResetError ? <p className="text-sm text-danger">{mfaResetError}</p> : null}
+                    <div className="flex justify-end gap-2"><button onClick={() => setMfaTarget(null)} className="px-4 py-2 border border-border rounded-xl text-sm">Batal</button><button onClick={() => void handleMfaReset()} disabled={mfaResetLoading || mfaFactors.length === 0 || mfaConfirmEmail.trim().toLowerCase() !== mfaTarget?.email.toLowerCase() || !mfaReason.trim() || adminTotpCode.length !== 6} className="px-4 py-2 bg-danger text-white rounded-xl text-sm disabled:opacity-50">{mfaResetLoading ? 'Mereset…' : 'Reset semua faktor'}</button></div>
+                </div>}
+            </Dialog>
+
             <Dialog open={!!deleteUser} onClose={() => setDeleteUser(null)}>
                 <h3 className="text-lg font-semibold text-fg mb-2">{t('clientdesk.deleteTitle')}</h3>
                 <p className="text-fg-muted text-sm mb-6">

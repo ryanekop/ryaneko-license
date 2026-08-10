@@ -8,6 +8,7 @@ import {
     type SubscriptionDuration,
 } from '@/lib/mayar-subscription-catalog';
 import { isClientDeskLifetimeTier } from '@/lib/clientdesk-subscription';
+import { requireAdmin } from '@/lib/admin-auth';
 
 type SubscriptionHistoryEventType = 'purchased' | 'renewed' | 'changed';
 
@@ -31,19 +32,6 @@ type BackfillResult = {
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
     return NextResponse.json(body, { status });
-}
-
-function isAuthorized(request: NextRequest) {
-    const adminPassword = process.env.ADMIN_PASSWORD;
-    if (!adminPassword) return false;
-
-    const headerPassword = request.headers.get('x-admin-password');
-    const authHeader = request.headers.get('authorization') || '';
-    const bearer = authHeader.toLowerCase().startsWith('bearer ')
-        ? authHeader.slice(7)
-        : '';
-
-    return headerPassword === adminPassword || bearer === adminPassword;
 }
 
 function parseAmountNumber(value: unknown): number {
@@ -306,9 +294,8 @@ async function processClientDeskPayload(payload: any, dryRun: boolean): Promise<
 }
 
 export async function POST(request: NextRequest) {
-    if (!isAuthorized(request)) {
-        return jsonResponse({ success: false, message: 'Unauthorized' }, 401);
-    }
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
     const apiKey = process.env.MAYAR_API_KEY;
     if (!apiKey) {

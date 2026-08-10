@@ -1,40 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-    ADMIN_SESSION_COOKIE,
-    adminSessionCookieOptions,
-    createAdminSessionValue,
-} from '@/lib/admin-session';
+import { authenticateAdminRequest } from '@/lib/admin-auth';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
-export async function POST(request: NextRequest) {
-    try {
-        const { password } = await request.json();
-        const adminPassword = process.env.ADMIN_PASSWORD;
-
-        if (!adminPassword) {
-            return NextResponse.json({ error: 'Admin password not configured' }, { status: 500 });
-        }
-
-        if (password === adminPassword) {
-            const response = NextResponse.json({ success: true });
-            response.cookies.set(
-                ADMIN_SESSION_COOKIE,
-                createAdminSessionValue(),
-                adminSessionCookieOptions,
-            );
-            return response;
-        }
-
-        return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
-    } catch {
-        return NextResponse.json({ error: 'Internal error' }, { status: 500 });
-    }
-}
-
-export async function DELETE() {
-    const response = NextResponse.json({ success: true });
-    response.cookies.set(ADMIN_SESSION_COOKIE, '', {
-        ...adminSessionCookieOptions,
-        maxAge: 0,
+export async function GET(request: NextRequest) {
+    const auth = await authenticateAdminRequest(request, { requireAal2: false });
+    if (!auth.ok) return auth.response;
+    const admin = getSupabaseAdmin();
+    if (!admin) return NextResponse.json({ error: 'supabase_not_configured' }, { status: 500 });
+    const { data, error } = await admin.auth.admin.mfa.listFactors({ userId: auth.context.user.id });
+    if (error) return NextResponse.json({ error: 'factor_lookup_failed' }, { status: 500 });
+    return NextResponse.json({
+        user: { id: auth.context.user.id, email: auth.context.user.email },
+        aal: auth.context.claims.aal || 'aal1',
+        factors: (data?.factors || []).filter((factor) => factor.status === 'verified'),
     });
-    return response;
 }
