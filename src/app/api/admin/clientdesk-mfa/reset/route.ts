@@ -4,6 +4,7 @@ import { recordAdminSecurityEvent } from '@/lib/admin-security-audit';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
 import { sendEmail } from '@/lib/resend';
 import { escapeTelegramHtml, notifyAlert } from '@/lib/telegram';
+import { isAdminPasswordConfigured, verifyAdminPassword } from '@/lib/admin-session';
 
 function requestIp(request: NextRequest) {
     return request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || null;
@@ -15,13 +16,15 @@ function safeError(error: unknown) {
 }
 
 export async function POST(request: NextRequest) {
-    const auth = await requireAdmin(request, { requireFreshTotp: true });
+    const auth = requireAdmin(request);
     if (!auth.ok) return auth.response;
-    const body = await request.json().catch(() => null) as { userId?: string; email?: string; reason?: string } | null;
+    const body = await request.json().catch(() => null) as { userId?: string; email?: string; reason?: string; password?: string } | null;
     const userId = body?.userId?.trim();
     const confirmationEmail = body?.email?.trim().toLowerCase();
     const reason = body?.reason?.trim();
-    if (!userId || !confirmationEmail || !reason) return NextResponse.json({ outcome: 'invalid_request' }, { status: 400 });
+    if (!userId || !confirmationEmail || !reason || !body?.password) return NextResponse.json({ outcome: 'invalid_request' }, { status: 400 });
+    if (!isAdminPasswordConfigured()) return NextResponse.json({ outcome: 'admin_password_not_configured' }, { status: 500 });
+    if (!verifyAdminPassword(body.password)) return NextResponse.json({ outcome: 'invalid_admin_password' }, { status: 401 });
 
     const auditBase = {
         actorUserId: auth.context.user.id, actorEmail: auth.context.user.email,

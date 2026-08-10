@@ -7,8 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --test src/lib/*.test.ts",
-    "admin:break-glass-mfa": "node --env-file=.env.local scripts/break-glass-reset-admin-mfa.mjs"
+    "test": "node --experimental-strip-types --test src/lib/*.test.ts"
   },
   "dependencies": {
     "@react-email/components": "^1.0.7",

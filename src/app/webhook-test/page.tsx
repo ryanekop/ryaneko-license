@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useTheme, useLang } from '@/lib/providers';
-import AdminAuthGate from '@/components/AdminAuthGate';
 
 const PRESETS = [
     {
@@ -438,11 +437,11 @@ const MoonIcon = () => (
     </svg>
 );
 
-function WebhookTestShell() {
+export default function WebhookTestPage() {
     const { theme, toggleTheme } = useTheme();
     const { lang, toggleLang, t } = useLang();
 
-    const [isAuthenticated, setIsAuthenticated] = useState(true);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [password, setPassword] = useState('');
     const [loginError, setLoginError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -455,7 +454,10 @@ function WebhookTestShell() {
     const [copied, setCopied] = useState(false);
     const [navOpen, setNavOpen] = useState(false);
 
-    useEffect(() => undefined, []);
+    useEffect(() => {
+        const saved = sessionStorage.getItem('admin_auth');
+        if (saved === 'true') setIsAuthenticated(true);
+    }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -470,7 +472,7 @@ function WebhookTestShell() {
             });
             if (res.ok) {
                 setIsAuthenticated(true);
-                // AdminAuthGate owns authentication.
+                sessionStorage.setItem('admin_auth', 'true');
             } else {
                 setLoginError(t('login.error'));
             }
@@ -1083,8 +1085,4 @@ function WebhookTestShell() {
             `}</style>
         </div>
     );
-}
-
-export default function WebhookTestPage() {
-    return <AdminAuthGate><WebhookTestShell /></AdminAuthGate>;
 }

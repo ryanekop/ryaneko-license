@@ -4,8 +4,6 @@ import { useState, useEffect, ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTheme, useLang } from '@/lib/providers';
-import AdminAuthGate from '@/components/AdminAuthGate';
-import { getAdminBrowserClient } from '@/lib/admin-browser-auth';
 
 interface DatabaseLayoutProps {
     children: ReactNode;
@@ -77,8 +75,8 @@ const TAB_ICONS: Record<string, React.ReactNode> = {
     universitas: <DatabaseIcon />,
 };
 
-function DatabaseShell({ children }: DatabaseLayoutProps) {
-    const [isAuthenticated, setIsAuthenticated] = useState(true);
+export default function DatabaseLayout({ children }: DatabaseLayoutProps) {
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -92,7 +90,10 @@ function DatabaseShell({ children }: DatabaseLayoutProps) {
         { name: t('tab.universitas'), href: '/database/universitas', slug: 'universitas' },
     ];
 
-    useEffect(() => undefined, []);
+    useEffect(() => {
+        const saved = sessionStorage.getItem('admin_auth');
+        if (saved === 'true') setIsAuthenticated(true);
+    }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -107,7 +108,7 @@ function DatabaseShell({ children }: DatabaseLayoutProps) {
             });
             if (res.ok) {
                 setIsAuthenticated(true);
-                // AdminAuthGate owns authentication.
+                sessionStorage.setItem('admin_auth', 'true');
             } else {
                 setError(t('login.error'));
             }
@@ -257,7 +258,9 @@ function DatabaseShell({ children }: DatabaseLayoutProps) {
                             </button>
                             <button
                                 onClick={() => {
-                                    void getAdminBrowserClient().auth.signOut().finally(() => window.location.reload());
+                                    void fetch('/api/admin/auth', { method: 'DELETE' });
+                                    sessionStorage.removeItem('admin_auth');
+                                    setIsAuthenticated(false);
                                 }}
                                 className="ml-1 h-8 px-3 text-xs text-danger border border-border rounded-lg cursor-pointer hover:bg-danger/10 hover:border-danger/30 transition-all active:scale-95 flex items-center gap-1.5 font-medium"
                             >
@@ -296,8 +299,4 @@ function DatabaseShell({ children }: DatabaseLayoutProps) {
             </main>
         </div>
     );
-}
-
-export default function DatabaseLayout({ children }: DatabaseLayoutProps) {
-    return <AdminAuthGate><DatabaseShell>{children}</DatabaseShell></AdminAuthGate>;
 }

@@ -294,7 +294,7 @@ async function processClientDeskPayload(payload: any, dryRun: boolean): Promise<
 }
 
 export async function POST(request: NextRequest) {
-    const auth = await requireAdmin(request);
+    const auth = requireAdmin(request, { allowPasswordHeader: true });
     if (!auth.ok) return auth.response;
 
     const apiKey = process.env.MAYAR_API_KEY;
