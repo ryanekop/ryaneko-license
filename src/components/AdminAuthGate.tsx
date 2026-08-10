@@ -1,7 +1,6 @@
 'use client';
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
 import { getAdminBrowserClient } from '@/lib/admin-browser-auth';
 
 type Stage = 'loading' | 'login' | 'challenge' | 'enroll' | 'ready';
@@ -102,7 +101,13 @@ export default function AdminAuthGate({ children }: { children: ReactNode }) {
         {stage === 'loading' ? <div className="text-center text-fg-muted">Memeriksa keamanan…</div> : null}
         {stage === 'login' ? <form onSubmit={login} className="space-y-3"><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email admin" className="w-full px-4 py-3 bg-bg border border-border rounded-xl text-fg" required /><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Kata sandi" className="w-full px-4 py-3 bg-bg border border-border rounded-xl text-fg" required /><button disabled={busy} className="w-full py-3 bg-accent text-accent-fg rounded-xl disabled:opacity-50">Masuk</button></form> : null}
         {stage === 'challenge' ? <div className="space-y-3"><select value={factorId} onChange={(event) => setFactorId(event.target.value)} className="w-full px-3 py-3 bg-bg border border-border rounded-xl text-fg">{factors.map((factor, index) => <option key={factor.id} value={factor.id}>{factor.friendly_name || `Authenticator ${index + 1}`}</option>)}</select><input inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} placeholder="Kode 6 digit" className="w-full px-4 py-3 bg-bg border border-border rounded-xl text-fg text-center tracking-[.3em]" /><button onClick={verify} disabled={busy || code.length !== 6} className="w-full py-3 bg-accent text-accent-fg rounded-xl disabled:opacity-50">Verifikasi</button></div> : null}
-        {stage === 'enroll' && enrollment ? <div className="space-y-3"><p className="text-sm text-fg-secondary">Admin wajib memiliki minimal dua faktor. Pindai QR ini pada perangkat berbeda.</p><Image src={enrollment.qr} alt="TOTP QR" width={208} height={208} unoptimized className="mx-auto size-52 bg-white p-2 rounded" /><code className="block break-all text-xs bg-bg p-2 rounded">{enrollment.secret}</code><input inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} placeholder="Kode 6 digit" className="w-full px-4 py-3 bg-bg border border-border rounded-xl text-fg text-center tracking-[.3em]" /><button onClick={verify} disabled={busy || code.length !== 6} className="w-full py-3 bg-accent text-accent-fg rounded-xl disabled:opacity-50">Aktifkan faktor</button></div> : null}
+        {stage === 'enroll' && enrollment ? <div className="space-y-3">
+            <p className="text-sm text-fg-secondary">Admin wajib memiliki minimal dua faktor. Pindai QR ini pada perangkat berbeda.</p>
+            {/* Supabase returns the QR as an SVG data URI, which next/image does not support. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={enrollment.qr} alt="TOTP QR" width={208} height={208} className="mx-auto size-52 bg-white p-2 rounded" />
+            <code className="block break-all text-xs bg-bg p-2 rounded">{enrollment.secret}</code><input inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} placeholder="Kode 6 digit" className="w-full px-4 py-3 bg-bg border border-border rounded-xl text-fg text-center tracking-[.3em]" /><button onClick={verify} disabled={busy || code.length !== 6} className="w-full py-3 bg-accent text-accent-fg rounded-xl disabled:opacity-50">Aktifkan faktor</button>
+        </div> : null}
         {error ? <p className="text-danger text-sm text-center">{error}</p> : null}
     </div></div>;
 }
