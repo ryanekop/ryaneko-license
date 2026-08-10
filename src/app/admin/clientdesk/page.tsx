@@ -1038,22 +1038,24 @@ export default function ClientDeskPage() {
                     <div className="md:hidden space-y-3">
                         {sortedUsers.map((user, i) => (
                             <div key={user.id} className="bg-bg-card rounded-xl border border-border p-4 shadow-[var(--shadow)] animate-fade-in" style={{ animationDelay: `${i * 0.03}s` }}>
-                                <div className="flex items-start justify-between mb-2">
-                                    <div>
-                                        <p className="font-semibold text-fg text-sm">{user.name}</p>
-                                        <p className="text-fg-muted text-xs">{user.email}</p>
+                                <div className="flex items-start justify-between gap-3 mb-2">
+                                    <div className="min-w-0">
+                                        <p className="truncate font-semibold text-fg text-sm">{user.name}</p>
+                                        <p className="truncate text-fg-muted text-xs">{user.email}</p>
                                     </div>
-                                    {getTierBadge(user.tier, user.status, user.plan)}
+                                    <div className="shrink-0">
+                                        {getTierBadge(user.tier, user.status, user.plan)}
+                                    </div>
                                 </div>
-                                <div className="flex items-center justify-between mt-3 pt-3 border-t border-border-light">
-                                    <div className="text-xs text-fg-muted space-y-0.5">
+                                <div className="flex flex-col items-stretch gap-3 mt-3 pt-3 border-t border-border-light">
+                                    <div className="w-full min-w-0 text-xs text-fg-muted space-y-0.5">
                                         <p className="flex items-center gap-1.5">{t('clientdesk.colDuration')}: {getDurationBadge(user.tier, user.duration)}</p>
                                         <p>{t('clientdesk.colExpiry')}: {isClientDeskLifetimeTier(user.tier, user.duration) ? <span className="text-amber-500">∞</span> : <span className={isExpired(user.expiresAt) ? 'text-danger' : ''}>{formatDate(user.expiresAt)}</span>}</p>
                                         <p>{t('clientdesk.colRegistered')}: {formatDate(user.createdAt)}</p>
                                         <p>{t('clientdesk.colLastLogin')}: {!user.emailConfirmed ? <span className="text-red-500 font-medium">⚠️ {t('clientdesk.unverified')}</span> : user.lastSignIn ? <span>{formatDateTime(user.lastSignIn)?.date} {formatDateTime(user.lastSignIn)?.time}</span> : '—'}</p>
                                     </div>
-                                    <div className="flex gap-1.5">
-                                        <button onClick={() => void openMfaReset(user)} className="px-2.5 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium"><ShieldIcon /> 2FA</button>
+                                    <div className="flex flex-wrap justify-end gap-1.5">
+                                        <button onClick={() => void openMfaReset(user)} className="px-2.5 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium flex items-center gap-1"><ShieldIcon /> 2FA</button>
                                         <button
                                             onClick={() => openAssignDialog(user)}
                                             className="px-2.5 py-1.5 bg-indigo-500 text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-indigo-600 transition-all active:scale-90 flex items-center gap-1"
