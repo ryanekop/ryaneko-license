@@ -1,112 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getFastpikSupabase } from '@/lib/fastpik-supabase';
 import { requireAdmin } from '@/lib/admin-auth';
+import { getFastpikSupabase } from '@/lib/fastpik-supabase';
+import { validateDualBannerPayload, withDualBannerDefaults } from '@/lib/maintenance-admin-settings';
 
-type MaintenanceMode = 'off' | 'on' | 'scheduled';
-type AnnouncementKind = 'maintenance' | 'warning' | 'announcement';
+const PREVIEW_BASE = process.env.FASTPIK_API_URL || 'https://fastpik.id';
 
-const SETTINGS_ID = 'global';
-const MODES = new Set<MaintenanceMode>(['off', 'on', 'scheduled']);
-const ANNOUNCEMENT_KINDS = new Set<AnnouncementKind>(['maintenance', 'warning', 'announcement']);
-const FASTPIK_PREVIEW_BASE =
-    process.env.FASTPIK_API_URL || 'https://fastpik.id';
-
-function getPreviewUrls() {
-    const baseUrl = FASTPIK_PREVIEW_BASE.replace(/\/+$/, '');
-    return {
-        id: `${baseUrl}/id/maintenance`,
-        en: `${baseUrl}/en/maintenance`,
-    };
+function previewUrls() {
+    const base = PREVIEW_BASE.replace(/\/+$/, '');
+    return { id: `${base}/id/maintenance`, en: `${base}/en/maintenance` };
 }
 
-async function assertAdmin(request: NextRequest) {
+async function authorize(request: NextRequest) {
     const auth = await requireAdmin(request);
     return auth.ok ? null : auth.response;
 }
 
-function normalizeIso(value: unknown) {
-    if (typeof value !== 'string' || !value.trim()) return null;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-function normalizeText(value: unknown) {
-    return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeKind(value: unknown): AnnouncementKind {
-    const kind = normalizeText(value) as AnnouncementKind;
-    return ANNOUNCEMENT_KINDS.has(kind) ? kind : 'maintenance';
-}
-
-function validatePayload(body: Record<string, unknown>) {
-    const mode = normalizeText(body.mode) as MaintenanceMode;
-    if (!MODES.has(mode)) {
-        return { error: 'Invalid maintenance mode.' };
-    }
-
-    const announcementKind = normalizeKind(body.announcement_kind);
-    const startAt = normalizeIso(body.start_at);
-    const endAt = normalizeIso(body.end_at);
-
-    if ((mode === 'on' || mode === 'scheduled') && (!startAt || !endAt)) {
-        return { error: 'Start and end time are required.' };
-    }
-    if (body.announcement_enabled === true && !endAt) {
-        return { error: 'End time is required for the announcement bar.' };
-    }
-    if (startAt && endAt && new Date(endAt).getTime() <= new Date(startAt).getTime()) {
-        return { error: 'End time must be after start time.' };
-    }
-
-    const messageId = normalizeText(body.message_id);
-    const messageEn = normalizeText(body.message_en);
-    const announcementMessageId = normalizeText(body.announcement_message_id);
-    const announcementMessageEn = normalizeText(body.announcement_message_en);
-
-    if (!messageId || !messageEn || !announcementMessageId || !announcementMessageEn) {
-        return { error: 'All maintenance messages are required.' };
-    }
-
-    return {
-        data: {
-            id: SETTINGS_ID,
-            mode,
-            announcement_enabled: body.announcement_enabled === true,
-            start_at: startAt,
-            end_at: endAt,
-            message_id: messageId,
-            message_en: messageEn,
-            announcement_message_id: announcementMessageId,
-            announcement_message_en: announcementMessageEn,
-            announcement_kind: announcementKind,
-            announcement_href: normalizeText(body.announcement_href),
-        },
-    };
-}
-
 export async function GET(request: NextRequest) {
-    const authError = await assertAdmin(request);
+    const authError = await authorize(request);
     if (authError) return authError;
-
     try {
         const { data, error } = await getFastpikSupabase()
             .from('platform_maintenance_settings')
             .select('*')
-            .eq('id', SETTINGS_ID)
+            .eq('id', 'global')
             .maybeSingle();
-
-        if (error) {
-            return NextResponse.json(
-                { success: false, error: error.message },
-                { status: 500 },
-            );
-        }
-
+        if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         return NextResponse.json({
             success: true,
-            settings: data || null,
-            previewUrls: getPreviewUrls(),
+            settings: withDualBannerDefaults(data as Record<string, unknown> | null),
+            previewUrls: previewUrls(),
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown server error';
@@ -115,43 +37,27 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-    const authError = await assertAdmin(request);
+    const authError = await authorize(request);
     if (authError) return authError;
-
     try {
         const body = await request.json().catch(() => null);
         if (!body || typeof body !== 'object') {
-            return NextResponse.json(
-                { success: false, error: 'Invalid payload.' },
-                { status: 400 },
-            );
+            return NextResponse.json({ success: false, error: 'Invalid payload.' }, { status: 400 });
         }
-
-        const validated = validatePayload(body as Record<string, unknown>);
+        const validated = validateDualBannerPayload(body as Record<string, unknown>);
         if ('error' in validated) {
-            return NextResponse.json(
-                { success: false, error: validated.error },
-                { status: 400 },
-            );
+            return NextResponse.json({ success: false, error: validated.error }, { status: 400 });
         }
-
         const { data, error } = await getFastpikSupabase()
             .from('platform_maintenance_settings')
             .upsert(validated.data, { onConflict: 'id' })
             .select('*')
             .single();
-
-        if (error) {
-            return NextResponse.json(
-                { success: false, error: error.message },
-                { status: 500 },
-            );
-        }
-
+        if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         return NextResponse.json({
             success: true,
-            settings: data,
-            previewUrls: getPreviewUrls(),
+            settings: withDualBannerDefaults(data as Record<string, unknown>),
+            previewUrls: previewUrls(),
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown server error';
