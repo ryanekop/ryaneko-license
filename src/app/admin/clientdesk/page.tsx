@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { AdminToast } from '@/components/AdminToast';
 import { useLang } from '@/lib/providers';
 import { ClientDeskMaintenancePanel } from '@/components/ClientDeskMaintenancePanel';
+import { ClientDeskEmailDomainsPanel } from '@/components/ClientDeskEmailDomainsPanel';
 import {
     isClientDeskLifetimeTier,
     normalizeClientDeskTier,
@@ -90,6 +91,11 @@ const ClipboardIcon = () => (
 const MaintenanceIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    </svg>
+);
+const EmailDomainIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-10 5L2 7" /><circle cx="18" cy="18" r="3" />
     </svg>
 );
 const RefreshIcon = ({ spinning }: { spinning?: boolean }) => (
@@ -269,7 +275,7 @@ export default function ClientDeskPage() {
     const [filterPackage, setFilterPackage] = useState<PackageFilter>('all');
     const [filterDuration, setFilterDuration] = useState<DurationFilter>('all');
     const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
-    const [activeTab, setActiveTab] = useState<'users' | 'blocklist' | 'maintenance'>('users');
+    const [activeTab, setActiveTab] = useState<'users' | 'blocklist' | 'email-domains' | 'maintenance'>('users');
 
     // Create form
     const [showCreate, setShowCreate] = useState(false);
@@ -668,7 +674,7 @@ export default function ClientDeskPage() {
                     <p className="text-fg-muted text-sm mt-1">{t('clientdesk.desc')}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    {activeTab !== 'maintenance' && (
+                    {(activeTab === 'users' || activeTab === 'blocklist') && (
                         <>
                             {activeTab === 'users' && <div className="relative">
                                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted">
@@ -716,6 +722,7 @@ export default function ClientDeskPage() {
                 {[
                     { key: 'users' as const, label: 'Users', icon: <UsersIcon /> },
                     { key: 'blocklist' as const, label: 'Blocklist', icon: <ShieldIcon /> },
+                    { key: 'email-domains' as const, label: 'Domain Email', icon: <EmailDomainIcon /> },
                     { key: 'maintenance' as const, label: 'Maintenance', icon: <MaintenanceIcon /> },
                 ].map((tab) => (
                     <button
@@ -1229,6 +1236,7 @@ export default function ClientDeskPage() {
             )}
 
             {activeTab === 'maintenance' && <ClientDeskMaintenancePanel />}
+            {activeTab === 'email-domains' && <ClientDeskEmailDomainsPanel />}
 
             {/* Delete Dialog */}
             <Dialog open={!!mfaTarget} onClose={() => !mfaResetLoading && setMfaTarget(null)}>
