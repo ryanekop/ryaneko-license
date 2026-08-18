@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createPagination, parseListParams } from '@/lib/pagination';
 
 /**
  * Proxy route for Client Desk tenant management API.
@@ -48,10 +49,20 @@ async function proxyToClientDesk(request: NextRequest, method: string) {
             }
         }
 
-        const res = await fetch(`${CLIENTDESK_API}/api/admin/tenants`, init);
+        const query = method === 'GET' ? request.nextUrl.search : '';
+        const res = await fetch(`${CLIENTDESK_API}/api/admin/tenants${query}`, init);
         const text = await res.text();
         const data = parseUpstreamPayload(text, res.status, res.ok);
 
+        if (method === 'GET' && res.ok && Array.isArray(data)) {
+            const { requestedPage, pageSize, q } = parseListParams(request.nextUrl.searchParams);
+            const needle = q.toLowerCase();
+            const filtered = needle ? data.filter((tenant: { name?: string; slug?: string; domain?: string }) =>
+                `${tenant.name || ''} ${tenant.slug || ''} ${tenant.domain || ''}`.toLowerCase().includes(needle)) : data;
+            const pagination = createPagination(filtered.length, requestedPage, pageSize);
+            const offset = (pagination.page - 1) * pagination.pageSize;
+            return NextResponse.json({ items: filtered.slice(offset, offset + pagination.pageSize), pagination }, { status: res.status });
+        }
         return NextResponse.json(data, { status: res.status });
     } catch (error) {
         console.error('Vendor Client Desk proxy error:', error);

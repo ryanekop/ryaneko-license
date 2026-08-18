@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { AdminModal } from '@/components/AdminModal';
+import { Pagination } from '@/components/Pagination';
+import { DEFAULT_PAGE_SIZE, type PageSize, type PaginationMeta } from '@/lib/pagination';
 import { AdminToast } from '@/components/AdminToast';
 import { FastpikMaintenancePanel } from '@/components/ClientDeskMaintenancePanel';
 import { useLang } from '@/lib/providers';
@@ -125,37 +127,13 @@ function isExpired(dateString: string | null) {
     return new Date(dateString) < new Date();
 }
 
-function getTime(dateString: string | null | undefined, fallback = 0) {
-    if (!dateString) return fallback;
-    const time = new Date(dateString).getTime();
-    return Number.isFinite(time) ? time : fallback;
-}
-
-function isUserExpired(user: UserData) {
-    return user.tier !== 'lifetime' && isExpired(user.expiresAt);
-}
-
-function getExpirySortTime(user: UserData) {
-    if (user.tier === 'lifetime' || !user.expiresAt) return Number.POSITIVE_INFINITY;
-    return getTime(user.expiresAt, Number.POSITIVE_INFINITY);
-}
-
 function getEditableTier(tier: string) {
     return EDITABLE_TIERS.includes(tier) ? tier : 'free';
 }
 
 // Portal Dialog component
 function Dialog({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
-    if (!open) return null;
-    return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50 animate-fade-in" onClick={onClose} />
-            <div className="relative bg-bg-card border border-border rounded-2xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-lg)] animate-fade-in-scale z-10">
-                {children}
-            </div>
-        </div>,
-        document.body
-    );
+    return <AdminModal open={open} onClose={onClose}>{children}</AdminModal>;
 }
 
 export default function FastpikPage() {
@@ -168,6 +146,10 @@ export default function FastpikPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterTier, setFilterTier] = useState<string>('all');
     const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: DEFAULT_PAGE_SIZE, total: 0, totalPages: 1 });
+    const [facets, setFacets] = useState<{ total: number; tiers: Record<string, number>; expiry: { active: number; expired: number } }>({ total: 0, tiers: {}, expiry: { active: 0, expired: 0 } });
+    const requestRef = useRef<AbortController | null>(null);
     const [toast, setToast] = useState<{ success: boolean; message: string } | null>(null);
     const [activeTab, setActiveTab] = useState<'users' | 'maintenance'>('users');
 
@@ -188,39 +170,68 @@ export default function FastpikPage() {
     const [assignUser, setAssignUser] = useState<UserData | null>(null);
     const [assignTenantId, setAssignTenantId] = useState('');
     const [assignLoading, setAssignLoading] = useState(false);
+    const [tenantsLoading, setTenantsLoading] = useState(false);
     const [assignError, setAssignError] = useState('');
 
     const fetchUsers = useCallback(async () => {
+        requestRef.current?.abort();
+        const controller = new AbortController();
+        requestRef.current = controller;
         setLoading(true);
         setError('');
         try {
-            const [usersRes, tenantsRes] = await Promise.all([
-                fetch('/api/admin/fastpik-users'),
-                fetch('/api/admin/vendor-fastpik'),
-            ]);
+            const params = new URLSearchParams({
+                page: String(pagination.page), pageSize: String(pagination.pageSize), q: debouncedSearch,
+                tier: filterTier, expiry: expiryFilter, sort: sortMode,
+            });
+            const usersRes = await fetch(`/api/admin/fastpik-users?${params}`, { signal: controller.signal });
             const usersData = await usersRes.json();
-            const tenantsData = await tenantsRes.json();
 
             if (!usersRes.ok || !usersData.success) {
                 setError(usersData.message || 'Failed to fetch users');
                 return;
             }
 
-            if (!tenantsRes.ok || !Array.isArray(tenantsData)) {
-                setError('Failed to fetch Fastpik tenants');
-                return;
+            setUsers(usersData.items || usersData.users || []);
+            if (usersData.pagination) {
+                setPagination(usersData.pagination);
             }
-
-            setUsers(usersData.users);
-            setTenants((tenantsData as TenantData[]).filter((tenant) => tenant.is_active));
-        } catch {
+            if (usersData.facets) setFacets(usersData.facets);
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
             setError('Connection error');
         } finally {
-            setLoading(false);
+            if (requestRef.current === controller) setLoading(false);
         }
-    }, []);
+    }, [debouncedSearch, expiryFilter, filterTier, pagination.page, pagination.pageSize, sortMode]);
+
+    const fetchTenantOptions = useCallback(async () => {
+        if (tenants.length > 0 || tenantsLoading) return;
+        setTenantsLoading(true);
+        setAssignError('');
+        try {
+            const response = await fetch('/api/admin/vendor-fastpik?page=1&pageSize=100');
+            const payload = await response.json();
+            const items = Array.isArray(payload) ? payload : payload.items;
+            if (!response.ok || !Array.isArray(items)) throw new Error(payload.error || 'Failed to fetch tenants');
+            setTenants((items as TenantData[]).filter((tenant) => tenant.is_active));
+        } catch (caught) {
+            setAssignError(caught instanceof Error ? caught.message : 'Failed to fetch tenants');
+        } finally {
+            setTenantsLoading(false);
+        }
+    }, [tenants.length, tenantsLoading]);
 
     useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+        return () => window.clearTimeout(timer);
+    }, [searchQuery]);
+
+    useEffect(() => {
+        setPagination((current) => ({ ...current, page: 1 }));
+    }, [debouncedSearch, filterTier, expiryFilter, sortMode]);
 
     useEffect(() => {
         if (!toast) return;
@@ -228,39 +239,7 @@ export default function FastpikPage() {
         return () => window.clearTimeout(timer);
     }, [toast]);
 
-    const filteredUsers = users.filter((u) => {
-        // Search filter
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            if (!u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false;
-        }
-        // Tier filter
-        if (filterTier !== 'all') {
-            if (filterTier === 'trial') {
-                if (!(u.tier === 'free' || u.status === 'trial')) return false;
-            } else {
-                if (u.tier !== filterTier) return false;
-            }
-        }
-        if (expiryFilter === 'expired' && !isUserExpired(u)) return false;
-        if (expiryFilter === 'active' && isUserExpired(u)) return false;
-        return true;
-    });
-
-    const sortedUsers = [...filteredUsers].sort((a, b) => {
-        if (sortMode === 'expiresSoon' || sortMode === 'expiresLatest') {
-            const expiryA = getExpirySortTime(a);
-            const expiryB = getExpirySortTime(b);
-            const aHasExpiry = Number.isFinite(expiryA);
-            const bHasExpiry = Number.isFinite(expiryB);
-            if (aHasExpiry !== bHasExpiry) return aHasExpiry ? -1 : 1;
-            if (expiryA !== expiryB) return sortMode === 'expiresSoon' ? expiryA - expiryB : expiryB - expiryA;
-        }
-
-        const da = getTime(a.registeredSortAt, getTime(a.createdAt));
-        const db = getTime(b.registeredSortAt, getTime(b.createdAt));
-        return sortMode === 'oldest' ? da - db : db - da;
-    });
+    const sortedUsers = users;
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -346,6 +325,7 @@ export default function FastpikPage() {
         setAssignUser(user);
         setAssignTenantId(user.tenantId || '');
         setAssignError('');
+        void fetchTenantOptions();
     };
 
     const handleAssignTenant = async () => {
@@ -478,7 +458,7 @@ export default function FastpikPage() {
                     { key: 'pro_yearly', label: '🔥 Yearly' },
                     { key: 'lifetime', label: '👑 Lifetime' },
                 ].map((f) => {
-                    const count = f.key === 'all' ? users.length : users.filter(u => f.key === 'trial' ? (u.tier === 'free' || u.status === 'trial') : u.tier === f.key).length;
+                    const count = f.key === 'all' ? facets.total : (facets.tiers[f.key] || 0);
                     return (
                         <button
                             key={f.key}
@@ -501,9 +481,7 @@ export default function FastpikPage() {
                     { key: 'expired', label: t('userFilter.expired') },
                     { key: 'active', label: t('userFilter.active') },
                 ].map((f) => {
-                    const count = f.key === 'all'
-                        ? users.length
-                        : users.filter((u) => f.key === 'expired' ? isUserExpired(u) : !isUserExpired(u)).length;
+                    const count = f.key === 'all' ? facets.total : facets.expiry[f.key as 'active' | 'expired'];
                     return (
                         <button
                             key={f.key}
@@ -574,7 +552,7 @@ export default function FastpikPage() {
 
             {/* User Count */}
             <div className="flex items-center gap-2 text-fg-muted text-sm">
-                <UsersIcon /> {t('fastpik.userCount')}: <span className="font-semibold text-fg">{filteredUsers.length}</span>{(filterTier !== 'all' || expiryFilter !== 'all') && <span className="text-fg-muted"> / {users.length}</span>}
+                <UsersIcon /> {t('fastpik.userCount')}: <span className="font-semibold text-fg">{pagination.total}</span>{(filterTier !== 'all' || expiryFilter !== 'all' || debouncedSearch) && <span className="text-fg-muted"> / {facets.total}</span>}
             </div>
 
             {/* Error */}
@@ -585,18 +563,12 @@ export default function FastpikPage() {
             )}
 
             {/* Loading */}
-            {loading && users.length === 0 && (
-                <div className="flex items-center justify-center py-12">
-                    <span className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-                </div>
-            )}
-
             {/* Users Table */}
             {!loading && users.length === 0 && !error ? (
                 <div className="text-center text-fg-muted py-12 bg-bg-card rounded-xl border border-border">
                     {t('fastpik.noUsers')}
                 </div>
-            ) : users.length > 0 && (
+            ) : (loading || users.length > 0) && (
                 <>
                     {/* Desktop Table */}
                     <div className="hidden md:block overflow-auto max-h-[calc(100vh-320px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)]">
@@ -615,9 +587,11 @@ export default function FastpikPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border-light">
-                                {sortedUsers.map((user, i) => (
+                                {loading ? Array.from({ length: 8 }).map((_, i) => (
+                                    <tr key={i}>{Array.from({ length: 9 }).map((__, cell) => <td key={cell} className="px-4 py-3"><div className="skeleton h-4 w-full max-w-28" /></td>)}</tr>
+                                )) : sortedUsers.map((user, i) => (
                                     <tr key={user.id} className="row-animate text-fg hover:bg-bg-secondary/50 transition-colors" style={{ animationDelay: `${i * 0.02}s` }}>
-                                        <td className="px-4 py-2.5 text-sm text-fg-muted">{i + 1}</td>
+                                        <td className="px-4 py-2.5 text-sm text-fg-muted">{(pagination.page - 1) * pagination.pageSize + i + 1}</td>
                                         <td className="px-4 py-2.5 text-sm font-medium">{user.name}</td>
                                         <td className="px-4 py-2.5 text-sm">{user.email}</td>
                                         <td className="px-4 py-2.5">{getTierBadge(user.tier, user.status)}</td>
@@ -692,7 +666,9 @@ export default function FastpikPage() {
 
                     {/* Mobile Cards */}
                     <div className="md:hidden space-y-3">
-                        {sortedUsers.map((user, i) => (
+                        {loading ? Array.from({ length: 4 }).map((_, i) => (
+                            <div key={i} className="rounded-xl border border-border bg-bg-card p-4"><div className="skeleton h-4 w-36" /><div className="skeleton mt-3 h-4 w-full" /><div className="skeleton mt-3 h-8 w-full" /></div>
+                        )) : sortedUsers.map((user, i) => (
                             <div key={user.id} className="bg-bg-card rounded-xl border border-border p-4 shadow-[var(--shadow)] animate-fade-in" style={{ animationDelay: `${i * 0.03}s` }}>
                                 <div className="flex items-start justify-between gap-3 mb-2">
                                     <div className="min-w-0">
@@ -739,6 +715,12 @@ export default function FastpikPage() {
                             </div>
                         ))}
                     </div>
+                    <Pagination
+                        meta={pagination}
+                        loading={loading}
+                        onPageChange={(page) => setPagination((current) => ({ ...current, page }))}
+                        onPageSizeChange={(pageSize: PageSize) => setPagination((current) => ({ ...current, page: 1, pageSize }))}
+                    />
                 </>
             )}
 
@@ -844,8 +826,9 @@ export default function FastpikPage() {
                             value={assignTenantId}
                             onChange={(e) => setAssignTenantId(e.target.value)}
                             className="w-full px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent/20"
+                            disabled={tenantsLoading}
                         >
-                            <option value="">{t('fastpik.selectTenant')}</option>
+                            <option value="">{tenantsLoading ? 'Memuat tenant…' : t('fastpik.selectTenant')}</option>
                             {tenants.map((tenant) => (
                                 <option key={tenant.id} value={tenant.id}>
                                     {tenant.name} {tenant.domain ? `(${tenant.domain})` : ''}

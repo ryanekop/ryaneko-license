@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { AdminModal } from '@/components/AdminModal';
+import { Pagination } from '@/components/Pagination';
+import { DEFAULT_PAGE_SIZE, type PageSize } from '@/lib/pagination';
 import { useLang } from '@/lib/providers';
 
 interface Product {
@@ -122,19 +124,7 @@ function Dialog({
     onClose: () => void;
     children: React.ReactNode;
 }) {
-    if (!open || typeof document === 'undefined') return null;
-
-    return createPortal(
-        <>
-            <div className="dialog-overlay" onClick={onClose} />
-            <div className="dialog-content">
-                <div className="bg-bg-card rounded-2xl border border-border shadow-[var(--shadow-lg)] p-5 sm:p-6">
-                    {children}
-                </div>
-            </div>
-        </>,
-        document.body
-    );
+    return <AdminModal open={open} onClose={onClose}>{children}</AdminModal>;
 }
 
 export default function LicenseList({ productSlug, productName, productIcon, platforms = DEFAULT_PLATFORMS }: LicenseListProps) {
@@ -146,7 +136,9 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [availableCount, setAvailableCount] = useState(0);
     const [usedCount, setUsedCount] = useState(0);
     const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE);
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [deviceFilter, setDeviceFilter] = useState('all');
     const [sortAsc, setSortAsc] = useState(false);
@@ -171,22 +163,26 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
     const [resendEmail, setResendEmail] = useState('');
     const [resendError, setResendError] = useState('');
     const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    const requestRef = useRef<AbortController | null>(null);
 
     const fetchLicenses = useCallback(async () => {
+        requestRef.current?.abort();
+        const controller = new AbortController();
+        requestRef.current = controller;
         setLoading(true);
         try {
             const params = new URLSearchParams({
                 product: productSlug,
                 page: page.toString(),
-                limit: '50',
+                pageSize: String(pageSize),
                 status: statusFilter,
                 sort: sortAsc ? 'asc' : 'desc',
-                ...(search && { search }),
+                ...(debouncedSearch && { q: debouncedSearch }),
                 ...(dataFilter !== 'all' && { dataFilter }),
                 ...(deviceFilter !== 'all' && { device: deviceFilter }),
             });
 
-            const res = await fetch(`/api/admin/licenses?${params}`);
+            const res = await fetch(`/api/admin/licenses?${params}`, { signal: controller.signal });
             const data = await res.json();
 
             setLicenses(data.licenses || []);
@@ -194,16 +190,23 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
             setTotalAll(data.totalAll || 0);
             setAvailableCount(data.availableCount || 0);
             setUsedCount(data.usedCount || 0);
+            if (data.pagination?.page && data.pagination.page !== page) setPage(data.pagination.page);
         } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
             console.error('Failed to fetch licenses:', error);
         } finally {
-            setLoading(false);
+            if (requestRef.current === controller) setLoading(false);
         }
-    }, [productSlug, page, search, statusFilter, deviceFilter, sortAsc, dataFilter]);
+    }, [productSlug, page, pageSize, debouncedSearch, statusFilter, deviceFilter, sortAsc, dataFilter]);
 
     useEffect(() => {
         fetchLicenses();
     }, [fetchLicenses]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+        return () => window.clearTimeout(timer);
+    }, [search]);
 
     // --- ACTIONS ---
     const handleChangeDevice = async () => {
@@ -573,7 +576,7 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
                                     className="row-animate text-fg hover:bg-bg-secondary/50 transition-colors"
                                     style={{ animationDelay: `${index * 0.03}s` }}
                                 >
-                                    <td className="px-4 py-3 text-sm text-fg-muted">{(page - 1) * 50 + index + 1}</td>
+                                    <td className="px-4 py-3 text-sm text-fg-muted">{(page - 1) * pageSize + index + 1}</td>
                                     <td className="px-4 py-3 font-mono text-sm text-fg-secondary whitespace-nowrap">{license.serial_key}</td>
                                     <td className="px-4 py-3 whitespace-nowrap">{getStatusBadge(license.status)}</td>
                                     <td className="px-4 py-3 text-sm font-medium whitespace-nowrap">{license.customer_name || <span className="text-fg-muted font-normal">-</span>}</td>
@@ -667,27 +670,12 @@ export default function LicenseList({ productSlug, productName, productIcon, pla
             </div>
 
             {/* Pagination */}
-            {total > 50 && (
-                <div className="flex items-center justify-center gap-3 animate-fade-in">
-                    <button
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                        disabled={page === 1}
-                        className="px-3 sm:px-4 py-2 bg-bg-card border border-border rounded-lg text-fg text-sm disabled:opacity-30 cursor-pointer hover:bg-bg-secondary active:scale-95 transition-all flex items-center gap-1.5"
-                    >
-                        {Icons.chevronLeft} <span className="hidden sm:inline">{t('list.previous')}</span>
-                    </button>
-                    <span className="px-3 py-2 text-fg-muted text-sm">
-                        {page} / {Math.ceil(total / 50)}
-                    </span>
-                    <button
-                        onClick={() => setPage((p) => p + 1)}
-                        disabled={page >= Math.ceil(total / 50)}
-                        className="px-3 sm:px-4 py-2 bg-bg-card border border-border rounded-lg text-fg text-sm disabled:opacity-30 cursor-pointer hover:bg-bg-secondary active:scale-95 transition-all flex items-center gap-1.5"
-                    >
-                        <span className="hidden sm:inline">{t('list.next')}</span> {Icons.chevronRight}
-                    </button>
-                </div>
-            )}
+            <Pagination
+                meta={{ page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) }}
+                loading={loading}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => { setPageSize(nextPageSize); setPage(1); }}
+            />
 
             {/* ===== PORTAL DIALOGS ===== */}
 

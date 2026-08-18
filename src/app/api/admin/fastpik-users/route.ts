@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { User } from '@supabase/supabase-js';
 import { getFastpikSupabase } from '@/lib/fastpik-supabase';
 import { escapeTelegramHtml, notifyAlert, notifyInfo } from '@/lib/telegram';
+import { createPagination, parseListParams } from '@/lib/pagination';
 
 // Direct connection to Fastpik Supabase (bypasses Vercel Attack Challenge)
 const fastpikSupabase = getFastpikSupabase();
@@ -103,8 +104,26 @@ function parseDateInput(value: unknown) {
 }
 
 // GET - list users
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
+        const { requestedPage, pageSize, q } = parseListParams(request.nextUrl.searchParams);
+        const tier = request.nextUrl.searchParams.get('tier') || 'all';
+        const expiry = request.nextUrl.searchParams.get('expiry') || 'all';
+        const sort = request.nextUrl.searchParams.get('sort') || 'newest';
+
+        const { data: rpcData, error: rpcError } = await fastpikSupabase.rpc('admin_list_fastpik_users', {
+            p_page: requestedPage,
+            p_page_size: pageSize,
+            p_query: q,
+            p_tier: tier,
+            p_expiry: expiry,
+            p_sort: sort,
+        });
+        if (!rpcError && rpcData && typeof rpcData === 'object') {
+            const payload = rpcData as { items?: unknown[]; pagination?: unknown; facets?: unknown };
+            return NextResponse.json({ success: true, ...payload, users: payload.items || [] });
+        }
+
         // Get all auth users (paginated — Supabase defaults to 50 per page)
         let authUsers: User[] = [];
         let page = 1;
@@ -157,9 +176,44 @@ export async function GET() {
             };
         });
 
-        formattedUsers.sort((a, b) => new Date(b.registeredSortAt).getTime() - new Date(a.registeredSortAt).getTime());
+        const now = Date.now();
+        const isExpiredUser = (user: typeof formattedUsers[number]) => user.tier !== 'lifetime' && !!user.expiresAt && new Date(user.expiresAt).getTime() < now;
+        const facets = {
+            total: formattedUsers.length,
+            tiers: formattedUsers.reduce<Record<string, number>>((result, user) => {
+                const key = user.tier === 'free' || user.status === 'trial' ? 'trial' : user.tier;
+                result[key] = (result[key] || 0) + 1;
+                return result;
+            }, {}),
+            expiry: {
+                active: formattedUsers.filter((user) => !isExpiredUser(user)).length,
+                expired: formattedUsers.filter(isExpiredUser).length,
+            },
+        };
+        const normalizedQ = q.toLowerCase();
+        const filtered = formattedUsers.filter((user) => {
+            if (normalizedQ && !user.name.toLowerCase().includes(normalizedQ) && !user.email.toLowerCase().includes(normalizedQ)) return false;
+            if (tier !== 'all') {
+                if (tier === 'trial' ? !(user.tier === 'free' || user.status === 'trial') : user.tier !== tier) return false;
+            }
+            if (expiry === 'active' && isExpiredUser(user)) return false;
+            if (expiry === 'expired' && !isExpiredUser(user)) return false;
+            return true;
+        });
+        filtered.sort((a, b) => {
+            if (sort === 'expiresSoon' || sort === 'expiresLatest') {
+                const aTime = a.expiresAt ? new Date(a.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+                const bTime = b.expiresAt ? new Date(b.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+                if (aTime !== bTime) return sort === 'expiresSoon' ? aTime - bTime : bTime - aTime;
+            }
+            const difference = new Date(a.registeredSortAt).getTime() - new Date(b.registeredSortAt).getTime();
+            return sort === 'oldest' ? difference : -difference;
+        });
+        const pagination = createPagination(filtered.length, requestedPage, pageSize);
+        const offset = (pagination.page - 1) * pagination.pageSize;
+        const items = filtered.slice(offset, offset + pagination.pageSize);
 
-        return NextResponse.json({ success: true, users: formattedUsers });
+        return NextResponse.json({ success: true, items, users: items, pagination, facets });
     } catch (error: unknown) {
         console.error('Fastpik users GET error:', error);
         return NextResponse.json({ success: false, message: getErrorMessage(error) }, { status: 500 });

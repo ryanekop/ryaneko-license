@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { AdminModal } from '@/components/AdminModal';
+import { Pagination } from '@/components/Pagination';
+import { PAGE_SIZE_OPTIONS, type PageSize } from '@/lib/pagination';
 import { useLang } from '@/lib/providers';
 
 interface University {
@@ -18,8 +20,6 @@ interface UniversitiesResponse {
     page: number;
     pageSize: number;
 }
-
-const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 const DatabaseIcon = () => (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -65,17 +65,7 @@ function formatDate(dateString: string) {
 }
 
 function Dialog({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
-    if (!open || typeof document === 'undefined') return null;
-
-    return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50 animate-fade-in" onClick={onClose} />
-            <div className="relative bg-bg-card border border-border rounded-2xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-lg)] animate-fade-in-scale z-10 max-h-[90vh] overflow-y-auto">
-                {children}
-            </div>
-        </div>,
-        document.body
-    );
+    return <AdminModal open={open} onClose={onClose} className="max-w-lg">{children}</AdminModal>;
 }
 
 export default function UniversitiesPage() {
@@ -98,6 +88,7 @@ export default function UniversitiesPage() {
 
     const [deleteTarget, setDeleteTarget] = useState<University | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
+    const requestRef = useRef<AbortController | null>(null);
 
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -111,6 +102,9 @@ export default function UniversitiesPage() {
     }, [search]);
 
     const fetchUniversities = useCallback(async () => {
+        requestRef.current?.abort();
+        const controller = new AbortController();
+        requestRef.current = controller;
         setLoading(true);
         setError('');
         try {
@@ -120,7 +114,7 @@ export default function UniversitiesPage() {
                 pageSize: String(pageSize),
             });
 
-            const res = await fetch(`/api/admin/universities?${params.toString()}`);
+            const res = await fetch(`/api/admin/universities?${params.toString()}`, { signal: controller.signal });
             if (!res.ok) throw new Error(`Status ${res.status}`);
             const data = await res.json();
 
@@ -137,9 +131,10 @@ export default function UniversitiesPage() {
                 setPage(parsed.page);
             }
         } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') return;
             setError(err instanceof Error ? err.message : 'Connection error');
         } finally {
-            setLoading(false);
+            if (requestRef.current === controller) setLoading(false);
         }
     }, [debouncedSearch, page, pageSize]);
 
@@ -306,12 +301,12 @@ export default function UniversitiesPage() {
                         </tr>
                     </thead>
                     <tbody>
-                        {loading && universities.length === 0 ? (
-                            <tr>
-                                <td colSpan={4} className="px-4 py-10 text-center">
-                                    <span className="inline-block w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-                                </td>
-                            </tr>
+                        {loading ? (
+                            Array.from({ length: 8 }).map((_, index) => (
+                                <tr key={index} className="border-t border-border-light">
+                                    {Array.from({ length: 4 }).map((__, cell) => <td key={cell} className="px-4 py-3.5"><div className="skeleton h-4 w-full max-w-36" /></td>)}
+                                </tr>
+                            ))
                         ) : universities.length === 0 ? (
                             <tr>
                                 <td colSpan={4} className="px-4 py-10 text-center text-fg-muted">
@@ -351,49 +346,12 @@ export default function UniversitiesPage() {
                 </table>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm text-fg-secondary">
-                    <span>{t('database.rowsPerPage')}</span>
-                    <select
-                        value={pageSize}
-                        onChange={(e) => {
-                            const value = Number.parseInt(e.target.value, 10);
-                            if (PAGE_SIZE_OPTIONS.includes(value as (typeof PAGE_SIZE_OPTIONS)[number])) {
-                                setPageSize(value as (typeof PAGE_SIZE_OPTIONS)[number]);
-                                setPage(1);
-                            }
-                        }}
-                        disabled={loading}
-                        className="px-2 py-1.5 bg-bg-card border border-border rounded-lg text-sm text-fg focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
-                    >
-                        {PAGE_SIZE_OPTIONS.map((option) => (
-                            <option key={option} value={option}>{option}</option>
-                        ))}
-                    </select>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                        disabled={loading || page <= 1}
-                        className="px-3 py-2 border border-border rounded-lg text-sm text-fg-secondary cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 disabled:opacity-60"
-                    >
-                        {t('database.prev')}
-                    </button>
-                    <div className="text-sm text-fg-secondary min-w-[120px] text-center">
-                        {t('database.page')} {page} / {totalPages}
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                        disabled={loading || page >= totalPages}
-                        className="px-3 py-2 border border-border rounded-lg text-sm text-fg-secondary cursor-pointer hover:bg-bg-secondary transition-all active:scale-95 disabled:opacity-60"
-                    >
-                        {t('database.next')}
-                    </button>
-                </div>
-            </div>
+            <Pagination
+                meta={{ page, pageSize, total, totalPages }}
+                loading={loading}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize: PageSize) => { setPageSize(nextPageSize); setPage(1); }}
+            />
 
             <Dialog open={showForm} onClose={() => setShowForm(false)}>
                 <h3 className="text-lg font-semibold text-fg mb-5">

@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { AdminModal } from '@/components/AdminModal';
+import { Pagination } from '@/components/Pagination';
+import { DEFAULT_PAGE_SIZE, type PageSize, type PaginationMeta } from '@/lib/pagination';
 import { useLang } from '@/lib/providers';
 import { resolveTenantAssetUrl } from '@/lib/tenant-asset-url';
 import { createVendorSlug } from '@/lib/vendor-slug';
@@ -69,16 +71,7 @@ function formatDeleteSuccessMessage(lang: 'id' | 'en', baseMessage: string, unas
 
 // Portal Dialog component
 function Dialog({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
-    if (!open) return null;
-    return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50 animate-fade-in" onClick={onClose} />
-            <div className="relative bg-bg-card border border-border rounded-2xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-lg)] animate-fade-in-scale z-10 max-h-[90vh] overflow-y-auto">
-                {children}
-            </div>
-        </div>,
-        document.body
-    );
+    return <AdminModal open={open} onClose={onClose} className="max-w-lg">{children}</AdminModal>;
 }
 
 
@@ -89,6 +82,9 @@ export default function VendorFastpikPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: DEFAULT_PAGE_SIZE, total: 0, totalPages: 1 });
+    const requestRef = useRef<AbortController | null>(null);
 
     // Create/Edit form
     const [showForm, setShowForm] = useState(false);
@@ -110,21 +106,29 @@ export default function VendorFastpikPage() {
 
 
     const fetchTenants = useCallback(async () => {
+        requestRef.current?.abort();
+        const controller = new AbortController();
+        requestRef.current = controller;
         setLoading(true);
         setError('');
         try {
-            const res = await fetch('/api/admin/vendor-fastpik');
+            const params = new URLSearchParams({ page: String(pagination.page), pageSize: String(pagination.pageSize), q: debouncedSearch });
+            const res = await fetch(`/api/admin/vendor-fastpik?${params}`, { signal: controller.signal });
             if (!res.ok) throw new Error(`Status ${res.status}`);
             const data = await res.json();
-            setTenants(data);
+            setTenants(Array.isArray(data) ? data : data.items || []);
+            if (data.pagination) setPagination(data.pagination);
         } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') return;
             setError(err instanceof Error ? err.message : 'Connection error');
         } finally {
-            setLoading(false);
+            if (requestRef.current === controller) setLoading(false);
         }
-    }, []);
+    }, [debouncedSearch, pagination.page, pagination.pageSize]);
 
     useEffect(() => { fetchTenants(); }, [fetchTenants]);
+    useEffect(() => { const timer = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300); return () => window.clearTimeout(timer); }, [searchQuery]);
+    useEffect(() => { setPagination((current) => ({ ...current, page: 1 })); }, [debouncedSearch]);
 
     const openCreate = () => {
         setEditingTenant(null);
@@ -243,15 +247,7 @@ export default function VendorFastpikPage() {
         formLogoUrl,
         formDomain || editingTenant?.domain || null
     );
-    const trimmedSearchQuery = searchQuery.trim();
-    const filteredTenants = trimmedSearchQuery
-        ? tenants.filter((tenant) => {
-            const q = trimmedSearchQuery.toLowerCase();
-            return tenant.name.toLowerCase().includes(q)
-                || tenant.slug.toLowerCase().includes(q)
-                || (tenant.domain || '').toLowerCase().includes(q);
-        })
-        : tenants;
+    const filteredTenants = tenants;
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -293,8 +289,7 @@ export default function VendorFastpikPage() {
 
             {/* Vendor Count */}
             <div className="flex items-center gap-2 text-fg-muted text-sm">
-                <GlobeIcon /> {t('vendor.totalVendors')}: <span className="font-semibold text-fg">{filteredTenants.length}</span>
-                {trimmedSearchQuery && <span className="text-fg-muted">/ {tenants.length}</span>}
+                <GlobeIcon /> {t('vendor.totalVendors')}: <span className="font-semibold text-fg">{pagination.total}</span>
             </div>
 
             {/* Error */}
@@ -311,12 +306,6 @@ export default function VendorFastpikPage() {
             )}
 
             {/* Loading */}
-            {loading && tenants.length === 0 && (
-                <div className="flex items-center justify-center py-12">
-                    <span className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-                </div>
-            )}
-
             {/* Tenants Grid */}
             {!loading && tenants.length === 0 && !error ? (
                 <div className="text-center text-fg-muted py-12 bg-bg-card rounded-xl border border-border">
@@ -326,9 +315,11 @@ export default function VendorFastpikPage() {
                 <div className="text-center text-fg-muted py-12 bg-bg-card rounded-xl border border-border">
                     {t('vendor.noSearchResults')}
                 </div>
-            ) : filteredTenants.length > 0 && (
+            ) : (loading || filteredTenants.length > 0) && (<>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredTenants.map((tenant, i) => {
+                    {loading ? Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="rounded-xl border border-border bg-bg-card p-5"><div className="skeleton h-10 w-10 rounded-lg" /><div className="skeleton mt-4 h-4 w-32" /><div className="skeleton mt-3 h-4 w-full" /><div className="skeleton mt-4 h-8 w-full" /></div>
+                    )) : filteredTenants.map((tenant, i) => {
                         const tenantLogoUrl = resolveTenantAssetUrl(tenant.logo_url, tenant.domain);
                         return (
                             <div
@@ -398,7 +389,8 @@ export default function VendorFastpikPage() {
                         );
                     })}
                 </div>
-            )}
+                <Pagination meta={pagination} loading={loading} onPageChange={(page) => setPagination((current) => ({ ...current, page }))} onPageSizeChange={(pageSize: PageSize) => setPagination((current) => ({ ...current, page: 1, pageSize }))} />
+            </>)}
 
             {/* Create/Edit Dialog */}
             <Dialog open={showForm} onClose={() => setShowForm(false)}>

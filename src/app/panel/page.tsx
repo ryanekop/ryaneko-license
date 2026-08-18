@@ -3,6 +3,7 @@
 import { useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useTheme, useLang } from '@/lib/providers';
+import { AnimatedPopover } from '@/components/AdminModal';
 
 // --- ICONS ---
 const SunIcon = () => (
@@ -161,10 +162,8 @@ export default function PanelPage() {
                                 <h1 className="text-base font-semibold tracking-tight">{t('panel.title')}</h1>
                                 <ChevronDownIcon />
                             </button>
-                            {navOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setNavOpen(false)} />
-                                    <div className="absolute top-full left-0 mt-2 w-56 bg-bg-card border border-border rounded-xl shadow-[var(--shadow-lg)] z-50 py-1.5 animate-fade-in">
+                            {navOpen && <div className="fixed inset-0 z-40" onClick={() => setNavOpen(false)} />}
+                            <AnimatedPopover open={navOpen} className="absolute top-full left-0 mt-2 w-56 bg-bg-card border border-border rounded-xl shadow-[var(--shadow-lg)] z-50 py-1.5">
                                         <Link
                                             href="/admin"
                                             onClick={() => setNavOpen(false)}
@@ -186,9 +185,7 @@ export default function PanelPage() {
                                         >
                                             <DatabaseMenuIcon /> {t('home.database')}
                                         </Link>
-                                    </div>
-                                </>
-                            )}
+                            </AnimatedPopover>
                         </div>
                         <div className="flex items-center gap-2">
                             <button

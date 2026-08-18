@@ -18,6 +18,7 @@ import {
     resolveClientDeskDuration,
     resolveClientDeskPlan,
 } from '@/lib/clientdesk-subscription';
+import { createPagination, parseListParams } from '@/lib/pagination';
 
 type ClientDeskSubscription = {
     user_id: string;
@@ -92,9 +93,33 @@ function parseDateInput(value: unknown) {
 }
 
 // GET - list users
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
         const supabase = getClientDeskSupabase();
+        const { requestedPage, pageSize, q } = parseListParams(request.nextUrl.searchParams);
+        const packageFilter = request.nextUrl.searchParams.get('package') || 'all';
+        const durationFilter = request.nextUrl.searchParams.get('duration') || 'all';
+        const expiry = request.nextUrl.searchParams.get('expiry') || 'all';
+        const sort = request.nextUrl.searchParams.get('sort') || 'newest';
+
+        const { data: rpcData, error: rpcError } = await supabase.rpc('admin_list_clientdesk_users', {
+            p_page: requestedPage,
+            p_page_size: pageSize,
+            p_query: q,
+            p_package: packageFilter,
+            p_duration: durationFilter,
+            p_expiry: expiry,
+            p_sort: sort,
+        });
+        if (!rpcError && rpcData && typeof rpcData === 'object') {
+            const payload = rpcData as { items?: unknown[]; pagination?: unknown; facets?: { memberCount?: number } };
+            return NextResponse.json({
+                success: true,
+                ...payload,
+                users: payload.items || [],
+                memberCount: payload.facets?.memberCount || 0,
+            });
+        }
 
         // Get all auth users (paginated)
         let authUsers: User[] = [];
@@ -181,13 +206,41 @@ export async function GET() {
             };
         });
 
-        formattedUsers.sort((a, b) => new Date(b.registeredSortAt).getTime() - new Date(a.registeredSortAt).getTime());
-
-        return NextResponse.json({
-            success: true,
-            users: formattedUsers,
-            memberCount: memberMemberships.length,
+        const now = Date.now();
+        const isExpiredUser = (user: typeof formattedUsers[number]) => !isClientDeskLifetimeTier(user.tier, user.duration) && !!user.expiresAt && new Date(user.expiresAt).getTime() < now;
+        const packageOf = (user: typeof formattedUsers[number]) => resolveClientDeskPlan(user) || (user.tier === 'free' || user.status === 'trial' ? 'trial' : 'none');
+        const durationOf = (user: typeof formattedUsers[number]) => resolveClientDeskDuration(user) || (isClientDeskLifetimeTier(user.tier, user.duration) ? 'lifetime' : null);
+        const facets = {
+            total: formattedUsers.length,
+            packages: formattedUsers.reduce<Record<string, number>>((result, user) => { const key = packageOf(user); result[key] = (result[key] || 0) + 1; return result; }, {}),
+            durations: formattedUsers.reduce<Record<string, number>>((result, user) => { const key = durationOf(user) || 'none'; result[key] = (result[key] || 0) + 1; return result; }, {}),
+            expiry: { active: formattedUsers.filter((user) => !isExpiredUser(user)).length, expired: formattedUsers.filter(isExpiredUser).length },
+            memberCount: 0,
+        };
+        const normalizedQ = q.toLowerCase();
+        const filtered = formattedUsers.filter((user) => {
+            if (normalizedQ && !user.name.toLowerCase().includes(normalizedQ) && !user.email.toLowerCase().includes(normalizedQ)) return false;
+            if (packageFilter !== 'all' && packageOf(user) !== packageFilter) return false;
+            if (durationFilter !== 'all' && durationOf(user) !== durationFilter) return false;
+            if (expiry === 'active' && isExpiredUser(user)) return false;
+            if (expiry === 'expired' && !isExpiredUser(user)) return false;
+            return true;
         });
+        facets.memberCount = filtered.reduce((count, user) => count + user.members.length, 0);
+        filtered.sort((a, b) => {
+            if (sort === 'expiresSoon' || sort === 'expiresLatest') {
+                const aTime = a.expiresAt ? new Date(a.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+                const bTime = b.expiresAt ? new Date(b.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+                if (aTime !== bTime) return sort === 'expiresSoon' ? aTime - bTime : bTime - aTime;
+            }
+            const difference = new Date(a.registeredSortAt).getTime() - new Date(b.registeredSortAt).getTime();
+            return sort === 'oldest' ? difference : -difference;
+        });
+        const pagination = createPagination(filtered.length, requestedPage, pageSize);
+        const offset = (pagination.page - 1) * pagination.pageSize;
+        const items = filtered.slice(offset, offset + pagination.pageSize);
+
+        return NextResponse.json({ success: true, items, users: items, pagination, facets, memberCount: facets.memberCount });
     } catch (error: unknown) {
         console.error('Client Desk users GET error:', error);
         return NextResponse.json({ success: false, message: getErrorMessage(error) }, { status: 500 });

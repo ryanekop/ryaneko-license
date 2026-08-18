@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
+import { createPagination } from '@/lib/pagination';
 
 const TABLE_CANDIDATES = ['university_references', 'univeristy_references'] as const;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
@@ -116,6 +117,7 @@ export async function GET(request: NextRequest) {
             total,
             page,
             pageSize,
+            pagination: createPagination(total, page, pageSize as 10 | 25 | 50 | 100),
         });
     } catch (error) {
         return NextResponse.json({ error: String(error) }, { status: 500 });

@@ -1,7 +1,9 @@
 'use client';
 
-import { Fragment, useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
+import { AdminModal } from '@/components/AdminModal';
+import { Pagination } from '@/components/Pagination';
+import { DEFAULT_PAGE_SIZE, type PageSize, type PaginationMeta } from '@/lib/pagination';
 import { AdminToast } from '@/components/AdminToast';
 import { useLang } from '@/lib/providers';
 import { ClientDeskMaintenancePanel } from '@/components/ClientDeskMaintenancePanel';
@@ -52,16 +54,6 @@ interface TenantData {
     name: string;
     domain: string | null;
     is_active: boolean;
-}
-
-interface TenantAccountData {
-    id: string;
-    full_name: string | null;
-    email: string | null;
-    role: string | null;
-    vendor_slug: string | null;
-    tenant_id: string | null;
-    tenant_name: string | null;
 }
 
 interface BlocklistData {
@@ -224,39 +216,13 @@ function isExpired(dateString: string | null) {
     return new Date(dateString) < new Date();
 }
 
-function getTime(dateString: string | null | undefined, fallback = 0) {
-    if (!dateString) return fallback;
-    const time = new Date(dateString).getTime();
-    return Number.isFinite(time) ? time : fallback;
-}
-
-function isUserExpired(user: UserData) {
-    return !isClientDeskLifetimeTier(user.tier, user.duration) && isExpired(user.expiresAt);
-}
-
-function getExpirySortTime(user: UserData) {
-    if (isClientDeskLifetimeTier(user.tier, user.duration) || !user.expiresAt) {
-        return Number.POSITIVE_INFINITY;
-    }
-    return getTime(user.expiresAt, Number.POSITIVE_INFINITY);
-}
-
 function getEditableTier(user: UserData) {
     return normalizeClientDeskTier(user) || 'free';
 }
 
 // Portal Dialog component
 function Dialog({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
-    if (!open) return null;
-    return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50 animate-fade-in" onClick={onClose} />
-            <div className="relative bg-bg-card border border-border rounded-2xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-lg)] animate-fade-in-scale z-10">
-                {children}
-            </div>
-        </div>,
-        document.body
-    );
+    return <AdminModal open={open} onClose={onClose}>{children}</AdminModal>;
 }
 
 export default function ClientDeskPage() {
@@ -275,6 +241,13 @@ export default function ClientDeskPage() {
     const [filterPackage, setFilterPackage] = useState<PackageFilter>('all');
     const [filterDuration, setFilterDuration] = useState<DurationFilter>('all');
     const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [debouncedBlocklistSearch, setDebouncedBlocklistSearch] = useState('');
+    const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: DEFAULT_PAGE_SIZE, total: 0, totalPages: 1 });
+    const [blocklistPagination, setBlocklistPagination] = useState<PaginationMeta>({ page: 1, pageSize: DEFAULT_PAGE_SIZE, total: 0, totalPages: 1 });
+    const [facets, setFacets] = useState<{ total: number; packages: Record<string, number>; durations: Record<string, number>; expiry: { active: number; expired: number }; memberCount: number }>({ total: 0, packages: {}, durations: {}, expiry: { active: 0, expired: 0 }, memberCount: 0 });
+    const usersRequestRef = useRef<AbortController | null>(null);
+    const blocklistRequestRef = useRef<AbortController | null>(null);
     const [activeTab, setActiveTab] = useState<'users' | 'blocklist' | 'email-domains' | 'maintenance'>('users');
 
     // Create form
@@ -294,6 +267,7 @@ export default function ClientDeskPage() {
     const [assignUser, setAssignUser] = useState<UserData | null>(null);
     const [assignTenantId, setAssignTenantId] = useState('');
     const [assignLoading, setAssignLoading] = useState(false);
+    const [tenantsLoading, setTenantsLoading] = useState(false);
     const [assignError, setAssignError] = useState('');
     const [blockEmail, setBlockEmail] = useState('');
     const [blockReason, setBlockReason] = useState('');
@@ -333,67 +307,59 @@ export default function ClientDeskPage() {
     };
 
     const fetchUsers = useCallback(async () => {
+        usersRequestRef.current?.abort();
+        const controller = new AbortController();
+        usersRequestRef.current = controller;
         setLoading(true);
         setError('');
         try {
-            const [usersRes, accountsRes, tenantsRes] = await Promise.all([
-                fetch('/api/admin/clientdesk-users'),
-                fetch('/api/admin/vendor-clientdesk-accounts'),
-                fetch('/api/admin/vendor-clientdesk'),
-            ]);
-
+            const params = new URLSearchParams({
+                page: String(pagination.page), pageSize: String(pagination.pageSize), q: debouncedSearch,
+                package: filterPackage, duration: filterDuration, expiry: expiryFilter, sort: sortMode,
+            });
+            const usersRes = await fetch(`/api/admin/clientdesk-users?${params}`, { signal: controller.signal });
             const usersData = await usersRes.json();
-            const accountsData = await accountsRes.json();
-            const tenantsData = await tenantsRes.json();
-
-            if (!usersData.success) {
+            if (!usersRes.ok || !usersData.success) {
                 setError(usersData.message || 'Failed to fetch users');
                 return;
             }
-
-            if (!accountsRes.ok || !accountsData.success) {
-                setError(accountsData.error || 'Failed to fetch tenant accounts');
-                return;
-            }
-
-            if (!tenantsRes.ok || !Array.isArray(tenantsData)) {
-                setError('Failed to fetch tenants');
-                return;
-            }
-
-            const accountMap = new Map(
-                ((accountsData.accounts || []) as TenantAccountData[]).map((account) => [account.id, account])
-            );
-
-            const mergedUsers = (usersData.users || []).map((user: UserData) => {
-                const account = accountMap.get(user.id);
-                return {
-                    ...user,
-                    role: account?.role || null,
-                    vendorSlug: account?.vendor_slug || null,
-                    tenantId: account?.tenant_id || null,
-                    tenantName: account?.tenant_name || null,
-                };
-            });
-
-            setUsers(mergedUsers);
-            setTenants((tenantsData as TenantData[]).filter((tenant) => tenant.is_active));
-        } catch {
+            setUsers(usersData.items || usersData.users || []);
+            if (usersData.pagination) setPagination(usersData.pagination);
+            if (usersData.facets) setFacets(usersData.facets);
+        } catch (caught) {
+            if (caught instanceof DOMException && caught.name === 'AbortError') return;
             setError('Connection error');
         } finally {
-            setLoading(false);
+            if (usersRequestRef.current === controller) setLoading(false);
         }
-    }, []);
+    }, [debouncedSearch, expiryFilter, filterDuration, filterPackage, pagination.page, pagination.pageSize, sortMode]);
+
+    const fetchTenantOptions = useCallback(async () => {
+        if (tenants.length > 0 || tenantsLoading) return;
+        setTenantsLoading(true);
+        setAssignError('');
+        try {
+            const response = await fetch('/api/admin/vendor-clientdesk?page=1&pageSize=100');
+            const payload = await response.json();
+            const items = Array.isArray(payload) ? payload : payload.items;
+            if (!response.ok || !Array.isArray(items)) throw new Error(payload.error || 'Failed to fetch tenants');
+            setTenants((items as TenantData[]).filter((tenant) => tenant.is_active));
+        } catch (caught) {
+            setAssignError(caught instanceof Error ? caught.message : 'Failed to fetch tenants');
+        } finally {
+            setTenantsLoading(false);
+        }
+    }, [tenants.length, tenantsLoading]);
 
     const fetchBlocklist = useCallback(async () => {
+        blocklistRequestRef.current?.abort();
+        const controller = new AbortController();
+        blocklistRequestRef.current = controller;
         setBlocklistLoading(true);
         setBlocklistError('');
         try {
-            const params = new URLSearchParams();
-            if (blocklistSearch.trim()) {
-                params.set('search', blocklistSearch.trim());
-            }
-            const res = await fetch(`/api/admin/clientdesk-blocklist${params.toString() ? `?${params.toString()}` : ''}`);
+            const params = new URLSearchParams({ page: String(blocklistPagination.page), pageSize: String(blocklistPagination.pageSize), q: debouncedBlocklistSearch });
+            const res = await fetch(`/api/admin/clientdesk-blocklist?${params}`, { signal: controller.signal });
             const data = await res.json();
 
             if (!res.ok || !data.success) {
@@ -401,16 +367,23 @@ export default function ClientDeskPage() {
                 return;
             }
 
-            setBlocklist(data.blocklist || []);
-        } catch {
+            setBlocklist(data.items || data.blocklist || []);
+            if (data.pagination) setBlocklistPagination(data.pagination);
+        } catch (caught) {
+            if (caught instanceof DOMException && caught.name === 'AbortError') return;
             setBlocklistError('Connection error');
         } finally {
-            setBlocklistLoading(false);
+            if (blocklistRequestRef.current === controller) setBlocklistLoading(false);
         }
-    }, [blocklistSearch]);
+    }, [blocklistPagination.page, blocklistPagination.pageSize, debouncedBlocklistSearch]);
 
     useEffect(() => { fetchUsers(); }, [fetchUsers]);
     useEffect(() => { fetchBlocklist(); }, [fetchBlocklist]);
+
+    useEffect(() => { const timer = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300); return () => window.clearTimeout(timer); }, [searchQuery]);
+    useEffect(() => { const timer = window.setTimeout(() => setDebouncedBlocklistSearch(blocklistSearch.trim()), 300); return () => window.clearTimeout(timer); }, [blocklistSearch]);
+    useEffect(() => { setPagination((current) => ({ ...current, page: 1 })); }, [debouncedSearch, filterPackage, filterDuration, expiryFilter, sortMode]);
+    useEffect(() => { setBlocklistPagination((current) => ({ ...current, page: 1 })); }, [debouncedBlocklistSearch]);
 
     useEffect(() => {
         if (!toast) return;
@@ -418,44 +391,7 @@ export default function ClientDeskPage() {
         return () => window.clearTimeout(timer);
     }, [toast]);
 
-    const filteredUsers = users.filter((u) => {
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            const ownerMatches =
-                u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-            const memberMatches = u.members.some(
-                (member) =>
-                    member.name.toLowerCase().includes(q) ||
-                    member.email.toLowerCase().includes(q) ||
-                    member.roleName.toLowerCase().includes(q),
-            );
-            if (!ownerMatches && !memberMatches) return false;
-        }
-        if (filterPackage !== 'all' && getPackageFromTier(u.tier, u.status, u.plan) !== filterPackage) {
-            return false;
-        }
-        if (filterDuration !== 'all' && getDurationFromTier(u.tier, u.duration) !== filterDuration) {
-            return false;
-        }
-        if (expiryFilter === 'expired' && !isUserExpired(u)) return false;
-        if (expiryFilter === 'active' && isUserExpired(u)) return false;
-        return true;
-    });
-
-    const sortedUsers = [...filteredUsers].sort((a, b) => {
-        if (sortMode === 'expiresSoon' || sortMode === 'expiresLatest') {
-            const expiryA = getExpirySortTime(a);
-            const expiryB = getExpirySortTime(b);
-            const aHasExpiry = Number.isFinite(expiryA);
-            const bHasExpiry = Number.isFinite(expiryB);
-            if (aHasExpiry !== bHasExpiry) return aHasExpiry ? -1 : 1;
-            if (expiryA !== expiryB) return sortMode === 'expiresSoon' ? expiryA - expiryB : expiryB - expiryA;
-        }
-
-        const da = getTime(a.registeredSortAt, getTime(a.createdAt));
-        const db = getTime(b.registeredSortAt, getTime(b.createdAt));
-        return sortMode === 'oldest' ? da - db : db - da;
-    });
+    const sortedUsers = users;
 
     const handleAddBlock = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -622,6 +558,7 @@ export default function ClientDeskPage() {
         setAssignUser(user);
         setAssignTenantId(user.tenantId || '');
         setAssignError('');
+        void fetchTenantOptions();
     };
 
     const handleAssignTenant = async () => {
@@ -773,7 +710,7 @@ export default function ClientDeskPage() {
                     { key: 'plus' as const, label: 'Plus' },
                     { key: 'pro' as const, label: 'Pro' },
                 ].map((f) => {
-                    const count = f.key === 'all' ? users.length : users.filter(u => getPackageFromTier(u.tier, u.status, u.plan) === f.key).length;
+                    const count = f.key === 'all' ? facets.total : (facets.packages[f.key] || 0);
                     return (
                         <button
                             key={f.key}
@@ -799,7 +736,7 @@ export default function ClientDeskPage() {
                     { key: 'yearly' as const, label: 'Yearly' },
                     { key: 'lifetime' as const, label: 'Lifetime' },
                 ].map((f) => {
-                    const count = f.key === 'all' ? users.length : users.filter(u => getDurationFromTier(u.tier, u.duration) === f.key).length;
+                    const count = f.key === 'all' ? facets.total : (facets.durations[f.key] || 0);
                     return (
                         <button
                             key={f.key}
@@ -822,9 +759,7 @@ export default function ClientDeskPage() {
                     { key: 'expired', label: t('userFilter.expired') },
                     { key: 'active', label: t('userFilter.active') },
                 ].map((f) => {
-                    const count = f.key === 'all'
-                        ? users.length
-                        : users.filter((u) => f.key === 'expired' ? isUserExpired(u) : !isUserExpired(u)).length;
+                    const count = f.key === 'all' ? facets.total : facets.expiry[f.key as 'active' | 'expired'];
                     return (
                         <button
                             key={f.key}
@@ -895,8 +830,8 @@ export default function ClientDeskPage() {
 
             {/* User Count */}
             {activeTab === 'users' && <div className="flex items-center gap-2 text-fg-muted text-sm">
-                <UsersIcon /> {t('clientdesk.userCount')}: <span className="font-semibold text-fg">{filteredUsers.length}</span>{(filterPackage !== 'all' || filterDuration !== 'all' || expiryFilter !== 'all') && <span className="text-fg-muted"> / {users.length}</span>}
-                <span className="text-fg-muted">• {t('clientdesk.memberCount')}: {filteredUsers.reduce((count, user) => count + user.members.length, 0)}</span>
+                <UsersIcon /> {t('clientdesk.userCount')}: <span className="font-semibold text-fg">{pagination.total}</span>{(filterPackage !== 'all' || filterDuration !== 'all' || expiryFilter !== 'all' || debouncedSearch) && <span className="text-fg-muted"> / {facets.total}</span>}
+                <span className="text-fg-muted">• {t('clientdesk.memberCount')}: {facets.memberCount}</span>
             </div>}
 
             {/* Error */}
@@ -906,19 +841,12 @@ export default function ClientDeskPage() {
                 </div>
             )}
 
-            {/* Loading */}
-            {activeTab === 'users' && loading && users.length === 0 && (
-                <div className="flex items-center justify-center py-12">
-                    <span className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-                </div>
-            )}
-
             {/* Users Table */}
             {activeTab === 'users' && (!loading && users.length === 0 && !error ? (
                 <div className="text-center text-fg-muted py-12 bg-bg-card rounded-xl border border-border">
                     {t('clientdesk.noUsers')}
                 </div>
-            ) : users.length > 0 && (
+            ) : (loading || users.length > 0) && (
                 <>
                     {/* Desktop Table */}
                     <div className="hidden md:block overflow-auto max-h-[calc(100vh-320px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)]">
@@ -937,10 +865,12 @@ export default function ClientDeskPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border-light">
-                                {sortedUsers.map((user, i) => (
+                                {loading ? Array.from({ length: 8 }).map((_, i) => (
+                                    <tr key={i}>{Array.from({ length: 9 }).map((__, cell) => <td key={cell} className="px-4 py-3"><div className="skeleton h-4 w-full max-w-28" /></td>)}</tr>
+                                )) : sortedUsers.map((user, i) => (
                                     <Fragment key={user.id}>
                                     <tr className="row-animate text-fg hover:bg-bg-secondary/50 transition-colors" style={{ animationDelay: `${i * 0.02}s` }}>
-                                        <td className="px-4 py-2.5 text-sm text-fg-muted">{i + 1}</td>
+                                        <td className="px-4 py-2.5 text-sm text-fg-muted">{(pagination.page - 1) * pagination.pageSize + i + 1}</td>
                                         <td className="px-4 py-2.5 text-sm font-medium">{user.name}</td>
                                         <td className="px-4 py-2.5 text-sm">{user.email}</td>
                                         <td className="px-4 py-2.5">{getTierBadge(user.tier, user.status, user.plan)}</td>
@@ -1043,7 +973,9 @@ export default function ClientDeskPage() {
 
                     {/* Mobile Cards */}
                     <div className="md:hidden space-y-3">
-                        {sortedUsers.map((user, i) => (
+                        {loading ? Array.from({ length: 4 }).map((_, i) => (
+                            <div key={i} className="rounded-xl border border-border bg-bg-card p-4"><div className="skeleton h-4 w-36" /><div className="skeleton mt-3 h-4 w-full" /><div className="skeleton mt-3 h-8 w-full" /></div>
+                        )) : sortedUsers.map((user, i) => (
                             <div key={user.id} className="bg-bg-card rounded-xl border border-border p-4 shadow-[var(--shadow)] animate-fade-in" style={{ animationDelay: `${i * 0.03}s` }}>
                                 <div className="flex items-start justify-between gap-3 mb-2">
                                     <div className="min-w-0">
@@ -1114,6 +1046,12 @@ export default function ClientDeskPage() {
                             </div>
                         ))}
                     </div>
+                    <Pagination
+                        meta={pagination}
+                        loading={loading}
+                        onPageChange={(page) => setPagination((current) => ({ ...current, page }))}
+                        onPageSizeChange={(pageSize: PageSize) => setPagination((current) => ({ ...current, page: 1, pageSize }))}
+                    />
                 </>
             ))}
 
@@ -1159,18 +1097,14 @@ export default function ClientDeskPage() {
                     )}
 
                     <div className="flex items-center gap-2 text-fg-muted text-sm">
-                        <ShieldIcon /> Blocklist: <span className="font-semibold text-fg">{blocklist.length}</span>
+                        <ShieldIcon /> Blocklist: <span className="font-semibold text-fg">{blocklistPagination.total}</span>
                     </div>
 
-                    {blocklistLoading && blocklist.length === 0 ? (
-                        <div className="flex items-center justify-center py-12">
-                            <span className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-                        </div>
-                    ) : blocklist.length === 0 ? (
+                    {!blocklistLoading && blocklist.length === 0 ? (
                         <div className="text-center text-fg-muted py-12 bg-bg-card rounded-xl border border-border">
                             No blocked emails yet
                         </div>
-                    ) : (
+                    ) : (<>
                         <div className="overflow-auto max-h-[calc(100vh-360px)] bg-bg-card rounded-xl border border-border shadow-[var(--shadow)]">
                             <table className="w-full">
                                 <thead className="sticky top-0 bg-bg-card z-10 border-b border-border">
@@ -1184,7 +1118,9 @@ export default function ClientDeskPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border-light">
-                                    {blocklist.map((block) => (
+                                    {blocklistLoading ? Array.from({ length: 8 }).map((_, i) => (
+                                        <tr key={i}>{Array.from({ length: 6 }).map((__, cell) => <td key={cell} className="px-4 py-3"><div className="skeleton h-4 w-full max-w-32" /></td>)}</tr>
+                                    )) : blocklist.map((block) => (
                                         <tr key={block.id} className="text-fg hover:bg-bg-secondary/50 transition-colors">
                                             <td className="px-4 py-2.5 text-sm font-medium">{block.email}</td>
                                             <td className="px-4 py-2.5">
@@ -1231,7 +1167,13 @@ export default function ClientDeskPage() {
                                 </tbody>
                             </table>
                         </div>
-                    )}
+                        <Pagination
+                            meta={blocklistPagination}
+                            loading={blocklistLoading}
+                            onPageChange={(page) => setBlocklistPagination((current) => ({ ...current, page }))}
+                            onPageSizeChange={(pageSize: PageSize) => setBlocklistPagination((current) => ({ ...current, page: 1, pageSize }))}
+                        />
+                    </>)}
                 </div>
             )}
 
@@ -1366,8 +1308,9 @@ export default function ClientDeskPage() {
                             value={assignTenantId}
                             onChange={(e) => setAssignTenantId(e.target.value)}
                             className="w-full px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent/20"
+                            disabled={tenantsLoading}
                         >
-                            <option value="">{t('clientdesk.selectTenant')}</option>
+                            <option value="">{tenantsLoading ? 'Memuat tenant…' : t('clientdesk.selectTenant')}</option>
                             {tenants.map((tenant) => (
                                 <option key={tenant.id} value={tenant.id}>
                                     {tenant.name} {tenant.domain ? `(${tenant.domain})` : ''}

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin, supabaseAdmin } from '@/lib/supabase';
 import { escapeTelegramHtml, notifyAlert } from '@/lib/telegram';
 import { getEmailHtml, getEmailSubject } from '@/lib/email-templates';
 import { sendEmail } from '@/lib/resend';
 import type { License, Purchase } from '@/lib/types';
+import { createPagination, parseListParams } from '@/lib/pagination';
 
 const tg = (value: unknown) => escapeTelegramHtml(value);
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -12,10 +13,36 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const productSlug = searchParams.get('product');
     const status = searchParams.get('status');
-    const search = searchParams.get('search');
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const { requestedPage: page, pageSize: limit, q: search } = parseListParams(searchParams);
     const offset = (page - 1) * limit;
+
+    const rpcClient = getSupabaseAdmin();
+    if (process.env.LICENSE_LIST_RPC_ENABLED === 'true' && rpcClient && productSlug) {
+        const { data: rpcData, error: rpcError } = await rpcClient.rpc('admin_list_licenses', {
+            p_product_slug: productSlug,
+            p_page: page,
+            p_page_size: limit,
+            p_query: search,
+            p_status: status || 'all',
+            p_device: searchParams.get('device') || 'all',
+            p_data_filter: searchParams.get('dataFilter') || 'all',
+            p_sort: searchParams.get('sort') || 'desc',
+        });
+        if (!rpcError && rpcData && typeof rpcData === 'object') {
+            const payload = rpcData as { items?: unknown[]; pagination?: { page?: number; total?: number; totalPages?: number }; facets?: { total?: number; available?: number; used?: number } };
+            return NextResponse.json({
+                ...payload,
+                licenses: payload.items || [],
+                total: payload.pagination?.total || 0,
+                totalAll: payload.facets?.total || 0,
+                availableCount: payload.facets?.available || 0,
+                usedCount: payload.facets?.used || 0,
+                page: payload.pagination?.page || page,
+                limit,
+                totalPages: payload.pagination?.totalPages || 1,
+            });
+        }
+    }
 
     // First, get the product ID for counting
     let productId: string | null = null;
@@ -93,15 +120,19 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    const pagination = createPagination(count || 0, page, limit);
     return NextResponse.json({
+        items: data,
         licenses: data,
         total: count,
         totalAll,
         availableCount,
         usedCount,
-        page,
+        page: pagination.page,
         limit,
-        totalPages: Math.ceil((count || 0) / limit),
+        totalPages: pagination.totalPages,
+        pagination,
+        facets: { total: totalAll, available: availableCount, used: usedCount },
     });
 }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
+import { createPagination, parseListParams } from '@/lib/pagination';
 
 const CLIENTDESK_API = process.env.CLIENTDESK_API_URL || 'https://clientdesk.id';
 const CLIENTDESK_KEY = process.env.CLIENTDESK_ADMIN_API_KEY || '';
@@ -41,10 +42,19 @@ async function proxyToClientDesk(request: NextRequest, method: 'GET' | 'PUT') {
             init,
         );
         const text = await response.text();
-        return NextResponse.json(
-            parseUpstreamPayload(text, response.status, response.ok),
-            { status: response.status },
-        );
+        const payload = parseUpstreamPayload(text, response.status, response.ok) as Record<string, unknown>;
+        if (method === 'GET' && response.ok && !payload.pagination) {
+            const { requestedPage, pageSize, q } = parseListParams(request.nextUrl.searchParams);
+            const source = Array.isArray(payload.items) ? payload.items : Array.isArray(payload.domains) ? payload.domains : [];
+            const needle = q.toLowerCase();
+            const filtered = needle ? source.filter((row: { domain?: string; provider_domain_id?: string; profiles?: { studio_name?: string } }) =>
+                `${row.domain || ''} ${row.provider_domain_id || ''} ${row.profiles?.studio_name || ''}`.toLowerCase().includes(needle)) : source;
+            const pagination = createPagination(filtered.length, requestedPage, pageSize);
+            const offset = (pagination.page - 1) * pagination.pageSize;
+            const items = filtered.slice(offset, offset + pagination.pageSize);
+            return NextResponse.json({ ...payload, items, domains: items, pagination }, { status: response.status });
+        }
+        return NextResponse.json(payload, { status: response.status });
     } catch (error) {
         console.error('Client Desk email domains proxy error:', error);
         return NextResponse.json(

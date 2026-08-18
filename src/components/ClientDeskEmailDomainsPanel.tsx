@@ -1,7 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { AdminModal } from '@/components/AdminModal';
+import { Pagination } from '@/components/Pagination';
+import { DEFAULT_PAGE_SIZE, type PageSize, type PaginationMeta } from '@/lib/pagination';
 import {
     CLIENTDESK_EMAIL_DOMAIN_STATUSES,
     normalizeClientDeskDnsRecord,
@@ -66,12 +68,14 @@ function statusClass(status: DomainStatus) {
 }
 
 function EditDialog({
+    open,
     row,
     saving,
     error,
     onClose,
     onSave,
 }: {
+    open: boolean;
     row: EmailDomainRow;
     saving: boolean;
     error: string;
@@ -109,10 +113,9 @@ function EditDialog({
         });
     }
 
-    return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-            <button type="button" aria-label="Tutup" className="absolute inset-0 bg-black/55" onClick={onClose} />
-            <form onSubmit={submit} className="relative z-10 max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-border bg-bg-card p-5 shadow-[var(--shadow-lg)] sm:p-6">
+    return (
+        <AdminModal open={open} onClose={onClose} closeDisabled={saving} className="max-w-4xl">
+            <form onSubmit={submit}>
                 <div className="flex items-start justify-between gap-4">
                     <div>
                         <h3 className="text-lg font-semibold text-fg">Proses Domain Email</h3>
@@ -166,8 +169,7 @@ function EditDialog({
                     <button type="submit" disabled={saving} className="rounded-xl bg-accent px-5 py-2 text-sm font-semibold text-accent-fg hover:opacity-85 disabled:opacity-50">{saving ? 'Menyimpan…' : 'Simpan Perubahan'}</button>
                 </div>
             </form>
-        </div>,
-        document.body,
+        </AdminModal>
     );
 }
 
@@ -175,48 +177,57 @@ export function ClientDeskEmailDomainsPanel() {
     const [domains, setDomains] = useState<EmailDomainRow[]>([]);
     const [statusFilter, setStatusFilter] = useState<'all' | DomainStatus>('all');
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: DEFAULT_PAGE_SIZE, total: 0, totalPages: 1 });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
     const [editing, setEditing] = useState<EmailDomainRow | null>(null);
+    const [editOpen, setEditOpen] = useState(false);
+    const requestRef = useRef<AbortController | null>(null);
 
     const fetchDomains = useCallback(async () => {
+        requestRef.current?.abort();
+        const controller = new AbortController();
+        requestRef.current = controller;
         setLoading(true);
         setError('');
         try {
-            const query = statusFilter === 'all' ? '' : `?status=${encodeURIComponent(statusFilter)}`;
-            const response = await fetch(`/api/admin/clientdesk-email-domains${query}`, { cache: 'no-store' });
+            const query = new URLSearchParams({ page: String(pagination.page), pageSize: String(pagination.pageSize), q: debouncedSearch });
+            if (statusFilter !== 'all') query.set('status', statusFilter);
+            const response = await fetch(`/api/admin/clientdesk-email-domains?${query}`, { cache: 'no-store', signal: controller.signal });
             const payload = await response.json().catch(() => null);
             if (!response.ok) {
                 setError(payload?.error || 'Gagal memuat pengajuan domain email.');
                 return;
             }
-            const rows = Array.isArray(payload?.domains) ? payload.domains : [];
+            const rows = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.domains) ? payload.domains : [];
             setDomains(rows.map((row: EmailDomainRow) => ({
                 ...row,
                 dns_records: Array.isArray(row.dns_records)
                     ? row.dns_records.map((record) => normalizeClientDeskDnsRecord(record)).filter((record: DnsRecord | null): record is DnsRecord => Boolean(record))
                     : [],
             })));
-        } catch {
+            if (payload?.pagination) setPagination(payload.pagination);
+        } catch (caught) {
+            if (caught instanceof DOMException && caught.name === 'AbortError') return;
             setError('Tidak dapat terhubung ke ClientDesk.');
         } finally {
-            setLoading(false);
+            if (requestRef.current === controller) setLoading(false);
         }
-    }, [statusFilter]);
+    }, [debouncedSearch, pagination.page, pagination.pageSize, statusFilter]);
 
     useEffect(() => { void fetchDomains(); }, [fetchDomains]);
+    useEffect(() => { const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300); return () => window.clearTimeout(timer); }, [search]);
+    useEffect(() => { setPagination((current) => ({ ...current, page: 1 })); }, [debouncedSearch, statusFilter]);
+    useEffect(() => {
+        if (editOpen || !editing) return;
+        const timer = window.setTimeout(() => setEditing(null), 220);
+        return () => window.clearTimeout(timer);
+    }, [editOpen, editing]);
 
-    const visibleDomains = useMemo(() => {
-        const query = search.trim().toLowerCase();
-        if (!query) return domains;
-        return domains.filter((row) =>
-            row.domain.toLowerCase().includes(query) ||
-            studioName(row).toLowerCase().includes(query) ||
-            (row.provider_domain_id || '').toLowerCase().includes(query),
-        );
-    }, [domains, search]);
+    const visibleDomains = domains;
 
     async function saveDomain(draft: DomainDraft) {
         if (!editing) return;
@@ -241,7 +252,7 @@ export function ClientDeskEmailDomainsPanel() {
                 setError(payload?.error || 'Gagal menyimpan domain email.');
                 return;
             }
-            setEditing(null);
+            setEditOpen(false);
             setNotice(`Domain ${editing.domain} berhasil diperbarui.`);
             await fetchDomains();
         } catch {
@@ -270,17 +281,17 @@ export function ClientDeskEmailDomainsPanel() {
             {notice ? <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600">{notice}</div> : null}
             {error && !editing ? <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-danger">{error}</div> : null}
 
-            <div className="flex items-center justify-between text-sm text-fg-muted"><span>{visibleDomains.length} pengajuan</span><span>ClientDesk adalah sumber data utama</span></div>
+            <div className="flex items-center justify-between text-sm text-fg-muted"><span>{pagination.total} pengajuan</span><span>ClientDesk adalah sumber data utama</span></div>
 
-            {loading && domains.length === 0 ? (
-                <div className="flex justify-center py-14"><span className="h-7 w-7 animate-spin rounded-full border-2 border-accent/30 border-t-accent" /></div>
-            ) : visibleDomains.length === 0 ? (
+            {!loading && visibleDomains.length === 0 ? (
                 <div className="rounded-xl border border-border bg-bg-card py-14 text-center text-sm text-fg-muted">Belum ada pengajuan domain untuk filter ini.</div>
             ) : (
                 <div className="overflow-x-auto rounded-xl border border-border bg-bg-card shadow-[var(--shadow)]">
                     <table className="w-full min-w-[980px]">
                         <thead className="border-b border-border text-left text-xs uppercase tracking-wider text-fg-muted"><tr><th className="px-4 py-3">Studio / Domain</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Provider ID</th><th className="px-4 py-3">DNS</th><th className="px-4 py-3">Diajukan</th><th className="px-4 py-3">Verified</th><th className="px-4 py-3 text-right">Aksi</th></tr></thead>
-                        <tbody className="divide-y divide-border-light">{visibleDomains.map((row) => (
+                        <tbody className="divide-y divide-border-light">{loading ? Array.from({ length: 8 }).map((_, index) => (
+                            <tr key={index}>{Array.from({ length: 7 }).map((__, cell) => <td key={cell} className="px-4 py-3"><div className="skeleton h-4 w-full max-w-32" /></td>)}</tr>
+                        )) : visibleDomains.map((row) => (
                             <tr key={row.user_id} className="text-sm text-fg hover:bg-bg-secondary/50">
                                 <td className="px-4 py-3"><p className="font-semibold">{studioName(row)}</p><p className="text-xs text-fg-muted">{row.domain}</p></td>
                                 <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td>
@@ -288,14 +299,15 @@ export function ClientDeskEmailDomainsPanel() {
                                 <td className="px-4 py-3">{row.dns_records.length} record</td>
                                 <td className="px-4 py-3 text-xs text-fg-secondary">{formatDate(row.submitted_at)}</td>
                                 <td className="px-4 py-3 text-xs text-fg-secondary">{formatDate(row.verified_at)}</td>
-                                <td className="px-4 py-3 text-right"><button type="button" onClick={() => { setError(''); setNotice(''); setEditing(row); }} className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-accent-fg hover:opacity-85">Proses</button></td>
+                                <td className="px-4 py-3 text-right"><button type="button" onClick={() => { setError(''); setNotice(''); setEditing(row); setEditOpen(true); }} className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-accent-fg hover:opacity-85">Proses</button></td>
                             </tr>
                         ))}</tbody>
                     </table>
                 </div>
             )}
+            <Pagination meta={pagination} loading={loading} onPageChange={(page) => setPagination((current) => ({ ...current, page }))} onPageSizeChange={(pageSize: PageSize) => setPagination((current) => ({ ...current, page: 1, pageSize }))} />
 
-            {editing ? <EditDialog row={editing} saving={saving} error={error} onClose={() => !saving && setEditing(null)} onSave={(draft) => void saveDomain(draft)} /> : null}
+            {editing ? <EditDialog open={editOpen} row={editing} saving={saving} error={error} onClose={() => !saving && setEditOpen(false)} onSave={(draft) => void saveDomain(draft)} /> : null}
         </div>
     );
 }

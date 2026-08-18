@@ -2,29 +2,40 @@
 # Deploy ryaneko-license to VPS
 # Usage: ./deploy.sh
 
-set -e
+set -euo pipefail
 
-VPS_HOST="root@103.175.207.113"
+VPS_HOST="root@43.157.213.188"
 APP_DIR="/var/www/ryaneko-license"
 PM2_NAME="license"
 
 echo "🚀 Deploying ryaneko-license..."
 
-# Step 1: Push to GitHub
+# Step 1: Push an already-reviewed commit to GitHub
 echo "📦 Pushing to GitHub..."
-git add -A
-git commit -m "fix: update email template image URLs to self-hosted" 2>/dev/null || echo "Nothing to commit"
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "❌ Working tree masih memiliki perubahan. Commit dan verifikasi terlebih dahulu."
+  exit 1
+fi
 git push origin main
 
 # Step 2: Deploy on VPS
 echo "🔄 Deploying on VPS..."
-ssh $VPS_HOST << 'EOF'
-  cd /root/ryaneko-license
-  git pull origin main
-  npm install --production
+ssh "$VPS_HOST" << EOF
+  set -euo pipefail
+  cd "$APP_DIR"
+  git pull --ff-only origin main
+  npm ci --include=dev
   npm run build
-  pm2 restart license
-  echo "✅ Deploy complete!"
+  pm2 restart "$PM2_NAME"
+  for attempt in \$(seq 1 30); do
+    if curl --fail --silent --output /dev/null http://127.0.0.1:3003/admin/raw-file-copy; then
+      echo "✅ Health check berhasil"
+      exit 0
+    fi
+    sleep 1
+  done
+  pm2 logs "$PM2_NAME" --lines 50 --nostream
+  exit 1
 EOF
 
 echo ""
