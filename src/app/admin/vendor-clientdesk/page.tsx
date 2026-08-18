@@ -9,6 +9,7 @@ import { DEFAULT_PAGE_SIZE, type PageSize, type PaginationMeta } from '@/lib/pag
 import { useLang } from '@/lib/providers';
 import { resolveTenantAssetUrl } from '@/lib/tenant-asset-url';
 import { createVendorSlug } from '@/lib/vendor-slug';
+import type { VendorSortMode } from '@/lib/vendor-sort';
 
 interface TenantData {
     id: string;
@@ -43,6 +44,11 @@ const RefreshIcon = ({ spinning }: { spinning?: boolean }) => (
 const PlusIcon = () => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <line x1="12" x2="12" y1="5" y2="19" /><line x1="5" x2="19" y1="12" y2="12" />
+    </svg>
+);
+const SortIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m3 16 4 4 4-4" /><path d="M7 20V4" /><path d="m21 8-4-4-4 4" /><path d="M17 4v16" />
     </svg>
 );
 const EditIcon = () => (
@@ -91,6 +97,7 @@ export default function VendorClientDeskPage() {
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [sortMode, setSortMode] = useState<VendorSortMode>('newest');
     const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: DEFAULT_PAGE_SIZE, total: 0, totalPages: 1 });
     const requestRef = useRef<AbortController | null>(null);
 
@@ -120,7 +127,7 @@ export default function VendorClientDeskPage() {
         setLoading(true);
         setError('');
         try {
-            const params = new URLSearchParams({ page: String(pagination.page), pageSize: String(pagination.pageSize), q: debouncedSearch });
+            const params = new URLSearchParams({ page: String(pagination.page), pageSize: String(pagination.pageSize), q: debouncedSearch, sort: sortMode });
             const res = await fetch(`/api/admin/vendor-clientdesk?${params}`, { signal: controller.signal });
             if (!res.ok) throw new Error(`Status ${res.status}`);
             const data = await res.json();
@@ -132,11 +139,11 @@ export default function VendorClientDeskPage() {
         } finally {
             if (requestRef.current === controller) setLoading(false);
         }
-    }, [debouncedSearch, pagination.page, pagination.pageSize]);
+    }, [debouncedSearch, pagination.page, pagination.pageSize, sortMode]);
 
     useEffect(() => { fetchTenants(); }, [fetchTenants]);
     useEffect(() => { const timer = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300); return () => window.clearTimeout(timer); }, [searchQuery]);
-    useEffect(() => { setPagination((current) => ({ ...current, page: 1 })); }, [debouncedSearch]);
+    useEffect(() => { setPagination((current) => ({ ...current, page: 1 })); }, [debouncedSearch, sortMode]);
 
     const openCreate = () => {
         setEditingTenant(null);
@@ -296,7 +303,21 @@ export default function VendorClientDeskPage() {
                     </h2>
                     <p className="text-fg-muted text-sm mt-1">{t('vendorClientDesk.desc')}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted">
+                            <SortIcon />
+                        </span>
+                        <select
+                            value={sortMode}
+                            onChange={(event) => setSortMode(event.target.value as VendorSortMode)}
+                            className="h-9 pl-8 pr-3 bg-bg-card border border-border rounded-lg text-xs font-medium text-fg cursor-pointer hover:bg-bg-secondary transition-all focus:outline-none focus:ring-2 focus:ring-accent/20"
+                        >
+                            <option value="newest">{t('vendor.sortNewest')}</option>
+                            <option value="oldest">{t('vendor.sortOldest')}</option>
+                            <option value="alphabetical">{t('vendor.sortAlphabetical')}</option>
+                        </select>
+                    </div>
                     <button
                         onClick={fetchTenants}
                         disabled={loading}
@@ -353,6 +374,13 @@ export default function VendorClientDeskPage() {
                     {t('vendor.noSearchResults')}
                 </div>
             ) : (loading || filteredTenants.length > 0) && (<>
+                <Pagination
+                    meta={pagination}
+                    loading={loading}
+                    variant="navigation"
+                    onPageChange={(page) => setPagination((current) => ({ ...current, page }))}
+                    onPageSizeChange={(pageSize: PageSize) => setPagination((current) => ({ ...current, page: 1, pageSize }))}
+                />
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {loading ? Array.from({ length: 6 }).map((_, i) => (
                         <div key={i} className="rounded-xl border border-border bg-bg-card p-5"><div className="skeleton h-10 w-10 rounded-lg" /><div className="skeleton mt-4 h-4 w-32" /><div className="skeleton mt-3 h-4 w-full" /><div className="skeleton mt-4 h-8 w-full" /></div>

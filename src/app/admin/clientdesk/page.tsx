@@ -621,15 +621,29 @@ export default function ClientDeskPage() {
         <div className="space-y-6 animate-fade-in">
             <AdminToast toast={toast} />
 
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
+            {/* Header and responsive product navigation */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-x-4 sm:gap-y-6">
+                <div className="sm:col-start-1 sm:row-start-1">
                     <h2 className="text-xl sm:text-2xl font-bold text-fg flex items-center gap-2.5">
                         <ClipboardIcon /> {t('clientdesk.title')}
                     </h2>
                     <p className="text-fg-muted text-sm mt-1">{t('clientdesk.desc')}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="sm:col-span-2 sm:row-start-2">
+                    <ProductSubnav
+                        activeKey={activeTab}
+                        ariaLabel="Client Desk navigation"
+                        items={[
+                            { key: 'users', label: 'Users', icon: ProductSubnavIcons.users },
+                            { key: 'blocklist', label: 'Blocklist', icon: ProductSubnavIcons.blocklist },
+                            { key: 'email-domains', label: 'Domain Email', icon: ProductSubnavIcons.emailDomains },
+                            { key: 'maintenance', label: 'Maintenance', icon: ProductSubnavIcons.maintenance },
+                            { key: 'vendor', label: 'Vendor', icon: ProductSubnavIcons.vendor },
+                        ]}
+                        onSelect={handleTabSelect}
+                    />
+                </div>
+                <div className="flex flex-wrap items-center gap-2 sm:col-start-2 sm:row-start-1 sm:justify-end">
                     {(activeTab === 'users' || activeTab === 'blocklist') && (
                         <>
                             {activeTab === 'users' && <div className="relative">
@@ -672,19 +686,6 @@ export default function ClientDeskPage() {
                     )}
                 </div>
             </div>
-
-            <ProductSubnav
-                activeKey={activeTab}
-                ariaLabel="Client Desk navigation"
-                items={[
-                    { key: 'users', label: 'Users', icon: ProductSubnavIcons.users },
-                    { key: 'blocklist', label: 'Blocklist', icon: ProductSubnavIcons.blocklist },
-                    { key: 'email-domains', label: 'Domain Email', icon: ProductSubnavIcons.emailDomains },
-                    { key: 'maintenance', label: 'Maintenance', icon: ProductSubnavIcons.maintenance },
-                    { key: 'vendor', label: 'Vendor', icon: ProductSubnavIcons.vendor },
-                ]}
-                onSelect={handleTabSelect}
-            />
 
             {/* Search */}
             {activeTab === 'users' ? (

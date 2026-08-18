@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPagination, parseListParams } from '@/lib/pagination';
+import { parseVendorSortMode, sortVendors, type SortableVendor } from '@/lib/vendor-sort';
 
 /**
  * Proxy route for FastPik tenant management API.
@@ -50,7 +51,10 @@ async function proxyToFastpik(request: NextRequest, method: string) {
             }
         }
 
-        const query = method === 'GET' ? request.nextUrl.search : '';
+        const sort = parseVendorSortMode(request.nextUrl.searchParams.get('sort'));
+        const upstreamParams = new URLSearchParams(request.nextUrl.searchParams);
+        upstreamParams.set('sort', sort);
+        const query = method === 'GET' ? `?${upstreamParams.toString()}` : '';
         const res = await fetch(`${FASTPIK_API}/api/admin/tenants${query}`, init);
         const text = await res.text();
         const data = parseUpstreamPayload(text, res.status, res.ok);
@@ -58,11 +62,12 @@ async function proxyToFastpik(request: NextRequest, method: string) {
         if (method === 'GET' && res.ok && Array.isArray(data)) {
             const { requestedPage, pageSize, q } = parseListParams(request.nextUrl.searchParams);
             const needle = q.toLowerCase();
-            const filtered = needle ? data.filter((tenant: { name?: string; slug?: string; domain?: string }) =>
+            const filtered = needle ? data.filter((tenant: SortableVendor & { slug?: string; domain?: string }) =>
                 `${tenant.name || ''} ${tenant.slug || ''} ${tenant.domain || ''}`.toLowerCase().includes(needle)) : data;
+            const sorted = sortVendors(filtered, sort);
             const pagination = createPagination(filtered.length, requestedPage, pageSize);
             const offset = (pagination.page - 1) * pagination.pageSize;
-            return NextResponse.json({ items: filtered.slice(offset, offset + pagination.pageSize), pagination }, { status: res.status });
+            return NextResponse.json({ items: sorted.slice(offset, offset + pagination.pageSize), pagination }, { status: res.status });
         }
         return NextResponse.json(data, { status: res.status });
     } catch (error) {
