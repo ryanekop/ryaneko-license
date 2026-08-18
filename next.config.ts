@@ -1,6 +1,20 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      {
+        source: '/admin/vendor-fastpik',
+        destination: '/admin/fastpik/vendor',
+        permanent: true,
+      },
+      {
+        source: '/admin/vendor-clientdesk',
+        destination: '/admin/clientdesk/vendor',
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

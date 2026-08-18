@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { AdminModal } from '@/components/AdminModal';
 import { Pagination } from '@/components/Pagination';
 import { DEFAULT_PAGE_SIZE, type PageSize, type PaginationMeta } from '@/lib/pagination';
 import { AdminToast } from '@/components/AdminToast';
 import { FastpikMaintenancePanel } from '@/components/ClientDeskMaintenancePanel';
+import { ProductSubnav, ProductSubnavIcons, type ProductSubnavKey } from '@/components/ProductSubnav';
 import { useLang } from '@/lib/providers';
 
 interface UserData {
@@ -35,6 +37,7 @@ interface TenantData {
 
 type SortMode = 'newest' | 'oldest' | 'expiresSoon' | 'expiresLatest';
 type ExpiryFilter = 'all' | 'expired' | 'active';
+type FastpikTab = 'users' | 'maintenance';
 
 const EDITABLE_TIERS = ['free', 'pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
 
@@ -85,12 +88,6 @@ const UsersIcon = () => (
         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>
 );
-const MaintenanceIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z" />
-    </svg>
-);
-
 function getTierBadge(tier: string, status?: string) {
     if (tier === 'free' || status === 'trial') {
         return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300">⏱️ Trial</span>;
@@ -138,6 +135,7 @@ function Dialog({ open, onClose, children }: { open: boolean; onClose: () => voi
 
 export default function FastpikPage() {
     const { t } = useLang();
+    const router = useRouter();
     const [users, setUsers] = useState<UserData[]>([]);
     const [tenants, setTenants] = useState<TenantData[]>([]);
     const [loading, setLoading] = useState(false);
@@ -151,7 +149,7 @@ export default function FastpikPage() {
     const [facets, setFacets] = useState<{ total: number; tiers: Record<string, number>; expiry: { active: number; expired: number } }>({ total: 0, tiers: {}, expiry: { active: 0, expired: 0 } });
     const requestRef = useRef<AbortController | null>(null);
     const [toast, setToast] = useState<{ success: boolean; message: string } | null>(null);
-    const [activeTab, setActiveTab] = useState<'users' | 'maintenance'>('users');
+    const [activeTab, setActiveTab] = useState<FastpikTab>('users');
 
     // Create form
     const [showCreate, setShowCreate] = useState(false);
@@ -172,6 +170,28 @@ export default function FastpikPage() {
     const [assignLoading, setAssignLoading] = useState(false);
     const [tenantsLoading, setTenantsLoading] = useState(false);
     const [assignError, setAssignError] = useState('');
+
+    useEffect(() => {
+        const syncTabFromUrl = () => {
+            const tab = new URLSearchParams(window.location.search).get('tab');
+            setActiveTab(tab === 'maintenance' ? 'maintenance' : 'users');
+        };
+
+        syncTabFromUrl();
+        window.addEventListener('popstate', syncTabFromUrl);
+        return () => window.removeEventListener('popstate', syncTabFromUrl);
+    }, []);
+
+    const handleTabSelect = (tab: ProductSubnavKey) => {
+        if (tab === 'vendor') {
+            router.push('/admin/fastpik/vendor');
+            return;
+        }
+        if (tab !== 'users' && tab !== 'maintenance') return;
+
+        setActiveTab(tab);
+        router.push(tab === 'users' ? '/admin/fastpik' : `/admin/fastpik?tab=${tab}`, { scroll: false });
+    };
 
     const fetchUsers = useCallback(async () => {
         requestRef.current?.abort();
@@ -410,30 +430,16 @@ export default function FastpikPage() {
                 </div>}
             </div>
 
-            <div className="flex w-fit rounded-xl border border-border bg-bg-card p-1 shadow-[var(--shadow)]">
-                <button
-                    type="button"
-                    onClick={() => setActiveTab('users')}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
-                        activeTab === 'users'
-                            ? 'bg-accent text-accent-fg'
-                            : 'text-fg-secondary hover:bg-bg-secondary hover:text-fg'
-                    }`}
-                >
-                    <UsersIcon /> Users
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setActiveTab('maintenance')}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
-                        activeTab === 'maintenance'
-                            ? 'bg-accent text-accent-fg'
-                            : 'text-fg-secondary hover:bg-bg-secondary hover:text-fg'
-                    }`}
-                >
-                    <MaintenanceIcon /> Maintenance
-                </button>
-            </div>
+            <ProductSubnav
+                activeKey={activeTab}
+                ariaLabel="Fastpik navigation"
+                items={[
+                    { key: 'users', label: 'Users', icon: ProductSubnavIcons.users },
+                    { key: 'maintenance', label: 'Maintenance', icon: ProductSubnavIcons.maintenance },
+                    { key: 'vendor', label: 'Vendor', icon: ProductSubnavIcons.vendor },
+                ]}
+                onSelect={handleTabSelect}
+            />
 
             {activeTab === 'users' ? (
                 <>

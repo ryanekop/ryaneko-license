@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { AdminModal } from '@/components/AdminModal';
 import { Pagination } from '@/components/Pagination';
+import { ProductSubnav, ProductSubnavIcons, type ProductSubnavKey } from '@/components/ProductSubnav';
 import { DEFAULT_PAGE_SIZE, type PageSize, type PaginationMeta } from '@/lib/pagination';
 import { useLang } from '@/lib/providers';
 import { resolveTenantAssetUrl } from '@/lib/tenant-asset-url';
@@ -23,6 +25,11 @@ interface TenantData {
 }
 
 // SVG Icons
+const ClipboardIcon = () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    </svg>
+);
 const StoreIcon = () => (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" /><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4" /><path d="M2 7h20" /><path d="M22 7v3a2 2 0 0 1-2 2a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7" />
@@ -78,6 +85,7 @@ function Dialog({ open, onClose, children }: { open: boolean; onClose: () => voi
 
 export default function VendorClientDeskPage() {
     const { t, lang } = useLang();
+    const router = useRouter();
     const [tenants, setTenants] = useState<TenantData[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -249,13 +257,42 @@ export default function VendorClientDeskPage() {
     );
     const filteredTenants = tenants;
 
+    const handleSectionSelect = (tab: ProductSubnavKey) => {
+        const href = tab === 'users'
+            ? '/admin/clientdesk'
+            : tab === 'vendor'
+                ? '/admin/clientdesk/vendor'
+                : `/admin/clientdesk?tab=${tab}`;
+        router.push(href);
+    };
+
     return (
         <div className="space-y-6 animate-fade-in">
-            {/* Header */}
+            <div>
+                <h2 className="text-xl sm:text-2xl font-bold text-fg flex items-center gap-2.5">
+                    <ClipboardIcon /> {t('clientdesk.title')}
+                </h2>
+                <p className="text-fg-muted text-sm mt-1">{t('clientdesk.desc')}</p>
+            </div>
+
+            <ProductSubnav
+                activeKey="vendor"
+                ariaLabel="Client Desk navigation"
+                items={[
+                    { key: 'users', label: 'Users', icon: ProductSubnavIcons.users },
+                    { key: 'blocklist', label: 'Blocklist', icon: ProductSubnavIcons.blocklist },
+                    { key: 'email-domains', label: 'Domain Email', icon: ProductSubnavIcons.emailDomains },
+                    { key: 'maintenance', label: 'Maintenance', icon: ProductSubnavIcons.maintenance },
+                    { key: 'vendor', label: 'Vendor', icon: ProductSubnavIcons.vendor },
+                ]}
+                onSelect={handleSectionSelect}
+            />
+
+            {/* Section header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                     <h2 className="text-xl sm:text-2xl font-bold text-fg flex items-center gap-2.5">
-                        <StoreIcon /> {t('vendorClientDesk.title')}
+                        <StoreIcon /> {t('vendor.manageTitle')}
                     </h2>
                     <p className="text-fg-muted text-sm mt-1">{t('vendorClientDesk.desc')}</p>
                 </div>

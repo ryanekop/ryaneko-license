@@ -1,10 +1,12 @@
 'use client';
 
 import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { AdminModal } from '@/components/AdminModal';
 import { Pagination } from '@/components/Pagination';
 import { DEFAULT_PAGE_SIZE, type PageSize, type PaginationMeta } from '@/lib/pagination';
 import { AdminToast } from '@/components/AdminToast';
+import { ProductSubnav, ProductSubnavIcons, type ProductSubnavKey } from '@/components/ProductSubnav';
 import { useLang } from '@/lib/providers';
 import { ClientDeskMaintenancePanel } from '@/components/ClientDeskMaintenancePanel';
 import { ClientDeskEmailDomainsPanel } from '@/components/ClientDeskEmailDomainsPanel';
@@ -73,21 +75,12 @@ type SortMode = 'newest' | 'oldest' | 'expiresSoon' | 'expiresLatest';
 type ExpiryFilter = 'all' | 'expired' | 'active';
 type PackageFilter = 'all' | 'trial' | 'basic' | 'plus' | 'pro';
 type DurationFilter = 'all' | 'monthly' | 'quarterly' | 'yearly' | 'lifetime';
+type ClientDeskTab = 'users' | 'blocklist' | 'email-domains' | 'maintenance';
 
 // SVG Icons
 const ClipboardIcon = () => (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-    </svg>
-);
-const MaintenanceIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-    </svg>
-);
-const EmailDomainIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-10 5L2 7" /><circle cx="18" cy="18" r="3" />
     </svg>
 );
 const RefreshIcon = ({ spinning }: { spinning?: boolean }) => (
@@ -227,6 +220,7 @@ function Dialog({ open, onClose, children }: { open: boolean; onClose: () => voi
 
 export default function ClientDeskPage() {
     const { t } = useLang();
+    const router = useRouter();
     const [users, setUsers] = useState<UserData[]>([]);
     const [tenants, setTenants] = useState<TenantData[]>([]);
     const [blocklist, setBlocklist] = useState<BlocklistData[]>([]);
@@ -248,7 +242,7 @@ export default function ClientDeskPage() {
     const [facets, setFacets] = useState<{ total: number; packages: Record<string, number>; durations: Record<string, number>; expiry: { active: number; expired: number }; memberCount: number }>({ total: 0, packages: {}, durations: {}, expiry: { active: 0, expired: 0 }, memberCount: 0 });
     const usersRequestRef = useRef<AbortController | null>(null);
     const blocklistRequestRef = useRef<AbortController | null>(null);
-    const [activeTab, setActiveTab] = useState<'users' | 'blocklist' | 'email-domains' | 'maintenance'>('users');
+    const [activeTab, setActiveTab] = useState<ClientDeskTab>('users');
 
     // Create form
     const [showCreate, setShowCreate] = useState(false);
@@ -268,6 +262,31 @@ export default function ClientDeskPage() {
     const [assignTenantId, setAssignTenantId] = useState('');
     const [assignLoading, setAssignLoading] = useState(false);
     const [tenantsLoading, setTenantsLoading] = useState(false);
+
+    useEffect(() => {
+        const syncTabFromUrl = () => {
+            const tab = new URLSearchParams(window.location.search).get('tab');
+            const validTab: ClientDeskTab = tab === 'blocklist' || tab === 'email-domains' || tab === 'maintenance'
+                ? tab
+                : 'users';
+            setActiveTab(validTab);
+        };
+
+        syncTabFromUrl();
+        window.addEventListener('popstate', syncTabFromUrl);
+        return () => window.removeEventListener('popstate', syncTabFromUrl);
+    }, []);
+
+    const handleTabSelect = (tab: ProductSubnavKey) => {
+        if (tab === 'vendor') {
+            router.push('/admin/clientdesk/vendor');
+            return;
+        }
+        if (tab !== 'users' && tab !== 'blocklist' && tab !== 'email-domains' && tab !== 'maintenance') return;
+
+        setActiveTab(tab);
+        router.push(tab === 'users' ? '/admin/clientdesk' : `/admin/clientdesk?tab=${tab}`, { scroll: false });
+    };
     const [assignError, setAssignError] = useState('');
     const [blockEmail, setBlockEmail] = useState('');
     const [blockReason, setBlockReason] = useState('');
@@ -654,28 +673,18 @@ export default function ClientDeskPage() {
                 </div>
             </div>
 
-            {/* Tabs */}
-            <div className="inline-flex rounded-xl border border-border bg-bg-card p-1 shadow-[var(--shadow)]">
-                {[
-                    { key: 'users' as const, label: 'Users', icon: <UsersIcon /> },
-                    { key: 'blocklist' as const, label: 'Blocklist', icon: <ShieldIcon /> },
-                    { key: 'email-domains' as const, label: 'Domain Email', icon: <EmailDomainIcon /> },
-                    { key: 'maintenance' as const, label: 'Maintenance', icon: <MaintenanceIcon /> },
-                ].map((tab) => (
-                    <button
-                        key={tab.key}
-                        onClick={() => setActiveTab(tab.key)}
-                        className={`px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
-                            activeTab === tab.key
-                                ? 'bg-accent text-accent-fg shadow-sm'
-                                : 'text-fg-secondary hover:bg-bg-secondary hover:text-fg'
-                        }`}
-                    >
-                        {tab.icon}
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
+            <ProductSubnav
+                activeKey={activeTab}
+                ariaLabel="Client Desk navigation"
+                items={[
+                    { key: 'users', label: 'Users', icon: ProductSubnavIcons.users },
+                    { key: 'blocklist', label: 'Blocklist', icon: ProductSubnavIcons.blocklist },
+                    { key: 'email-domains', label: 'Domain Email', icon: ProductSubnavIcons.emailDomains },
+                    { key: 'maintenance', label: 'Maintenance', icon: ProductSubnavIcons.maintenance },
+                    { key: 'vendor', label: 'Vendor', icon: ProductSubnavIcons.vendor },
+                ]}
+                onSelect={handleTabSelect}
+            />
 
             {/* Search */}
             {activeTab === 'users' ? (
