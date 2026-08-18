@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createPagination, parseListParams } from '@/lib/pagination';
-import { parseVendorSortMode, sortVendors, type SortableVendor } from '@/lib/vendor-sort';
+import { parseListParams } from '@/lib/pagination';
+import { createVendorListResult, fetchAllVendorPages, type VendorListItem } from '@/lib/vendor-list';
+import { parseVendorSortMode } from '@/lib/vendor-sort';
 
 /**
  * Proxy route for Client Desk tenant management API.
@@ -50,24 +51,30 @@ async function proxyToClientDesk(request: NextRequest, method: string) {
             }
         }
 
-        const sort = parseVendorSortMode(request.nextUrl.searchParams.get('sort'));
-        const upstreamParams = new URLSearchParams(request.nextUrl.searchParams);
-        upstreamParams.set('sort', sort);
-        const query = method === 'GET' ? `?${upstreamParams.toString()}` : '';
-        const res = await fetch(`${CLIENTDESK_API}/api/admin/tenants${query}`, init);
+        if (method === 'GET') {
+            const { requestedPage, pageSize, q } = parseListParams(request.nextUrl.searchParams);
+            const sort = parseVendorSortMode(request.nextUrl.searchParams.get('sort'));
+            const vendors = await fetchAllVendorPages<VendorListItem>(async (page, upstreamPageSize) => {
+                const upstreamParams = new URLSearchParams({
+                    page: String(page),
+                    pageSize: String(upstreamPageSize),
+                });
+                const response = await fetch(`${CLIENTDESK_API}/api/admin/tenants?${upstreamParams}`, init);
+                const text = await response.text();
+                const data = parseUpstreamPayload(text, response.status, response.ok);
+                if (!response.ok) {
+                    const message = typeof data?.error === 'string' ? data.error : `Client Desk API request failed with status ${response.status}`;
+                    throw new Error(message);
+                }
+                return data;
+            });
+
+            return NextResponse.json(createVendorListResult(vendors, { requestedPage, pageSize, q, sort }));
+        }
+
+        const res = await fetch(`${CLIENTDESK_API}/api/admin/tenants`, init);
         const text = await res.text();
         const data = parseUpstreamPayload(text, res.status, res.ok);
-
-        if (method === 'GET' && res.ok && Array.isArray(data)) {
-            const { requestedPage, pageSize, q } = parseListParams(request.nextUrl.searchParams);
-            const needle = q.toLowerCase();
-            const filtered = needle ? data.filter((tenant: SortableVendor & { slug?: string; domain?: string }) =>
-                `${tenant.name || ''} ${tenant.slug || ''} ${tenant.domain || ''}`.toLowerCase().includes(needle)) : data;
-            const sorted = sortVendors(filtered, sort);
-            const pagination = createPagination(filtered.length, requestedPage, pageSize);
-            const offset = (pagination.page - 1) * pagination.pageSize;
-            return NextResponse.json({ items: sorted.slice(offset, offset + pagination.pageSize), pagination }, { status: res.status });
-        }
         return NextResponse.json(data, { status: res.status });
     } catch (error) {
         console.error('Vendor Client Desk proxy error:', error);
