@@ -65,18 +65,18 @@ const EXTERNAL_LINKS = [
         bg: 'bg-blue-600/5'
     },
     {
-        name: 'Server Hostingan.id',
-        url: 'https://my.hostingan.id/',
-        iconUrl: 'https://www.google.com/s2/favicons?domain=hostingan.id&sz=128',
-        color: 'text-orange-600',
-        bg: 'bg-orange-600/5'
-    },
-    {
         name: 'Tencent Cloud',
         url: 'https://console.tencentcloud.com/developer',
         iconUrl: 'https://www.google.com/s2/favicons?domain=tencentcloud.com&sz=128',
         color: 'text-blue-500',
         bg: 'bg-blue-500/5'
+    },
+    {
+        name: 'Sumopod',
+        url: 'https://sumopod.com/',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=sumopod.com&sz=128',
+        color: 'text-violet-600',
+        bg: 'bg-violet-600/5'
     },
     {
         name: 'Domainesia.com',
@@ -115,24 +115,31 @@ const EXTERNAL_LINKS = [
     },
     {
         name: 'Analytics Umami',
-        url: 'https://cloud.umami.is/',
-        iconUrl: 'https://www.google.com/s2/favicons?domain=umami.is&sz=128',
+        url: 'https://umami.ryanekoapp.web.id/',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=umami.ryanekoapp.web.id&sz=128',
         color: 'text-pink-600',
         bg: 'bg-pink-600/5'
     },
     {
-        name: 'Uptime Robot',
-        url: 'https://dashboard.uptimerobot.com/',
-        iconUrl: 'https://www.google.com/s2/favicons?domain=uptimerobot.com&sz=128',
+        name: 'Pulsetic',
+        url: 'https://pulsetic.com/',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=pulsetic.com&sz=128',
         color: 'text-green-600',
         bg: 'bg-green-600/5'
     },
     {
-        name: 'Manychat',
-        url: 'https://app.manychat.com/',
-        iconUrl: 'https://www.google.com/s2/favicons?domain=manychat.com&sz=128',
-        color: 'text-cyan-600',
-        bg: 'bg-cyan-600/5'
+        name: 'Studio Supabase Fastpik',
+        url: 'https://studio-supabase.fastpik.id/',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=studio-supabase.fastpik.id&sz=128',
+        color: 'text-emerald-600',
+        bg: 'bg-emerald-600/5'
+    },
+    {
+        name: 'Studio Supabase Clientdesk',
+        url: 'https://studio-supabase.clientdesk.id/',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=studio-supabase.clientdesk.id&sz=128',
+        color: 'text-teal-600',
+        bg: 'bg-teal-600/5'
     }
 ];
 

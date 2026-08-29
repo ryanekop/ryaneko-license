@@ -446,6 +446,8 @@ export default function WebhookTestPage() {
     const [loginError, setLoginError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [loginLoading, setLoginLoading] = useState(false);
+    const [authChecking, setAuthChecking] = useState(true);
+    const [remember, setRemember] = useState(false);
 
     const [jsonInput, setJsonInput] = useState(JSON.stringify(PRESETS[0].payload, null, 2));
     const [sending, setSending] = useState(false);
@@ -455,8 +457,13 @@ export default function WebhookTestPage() {
     const [navOpen, setNavOpen] = useState(false);
 
     useEffect(() => {
-        const saved = sessionStorage.getItem('admin_auth');
-        if (saved === 'true') setIsAuthenticated(true);
+        const controller = new AbortController();
+        fetch('/api/admin/auth', { signal: controller.signal, cache: 'no-store' })
+            .then((res) => res.ok ? res.json() : { authenticated: false })
+            .then((data: { authenticated?: boolean }) => setIsAuthenticated(data.authenticated === true))
+            .catch(() => undefined)
+            .finally(() => setAuthChecking(false));
+        return () => controller.abort();
     }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
@@ -468,11 +475,11 @@ export default function WebhookTestPage() {
             const res = await fetch('/api/admin/auth', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password }),
+                body: JSON.stringify({ password, remember }),
             });
             if (res.ok) {
                 setIsAuthenticated(true);
-                sessionStorage.setItem('admin_auth', 'true');
+                setPassword('');
             } else {
                 setLoginError(t('login.error'));
             }
@@ -482,6 +489,14 @@ export default function WebhookTestPage() {
             setLoginLoading(false);
         }
     };
+
+    if (authChecking) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-bg">
+                <span className="w-5 h-5 border-2 border-fg-muted/30 border-t-fg rounded-full animate-spin" aria-label={t('login.loading')} />
+            </div>
+        );
+    }
 
     // Login screen
     if (!isAuthenticated) {
@@ -532,6 +547,18 @@ export default function WebhookTestPage() {
                                 )}
                             </button>
                         </div>
+                        <label className={`flex items-center gap-2.5 text-sm text-fg-secondary select-none w-fit ${loginLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                            <input
+                                type="checkbox"
+                                role="switch"
+                                checked={remember}
+                                onChange={(e) => setRemember(e.target.checked)}
+                                disabled={loginLoading}
+                                className="peer sr-only"
+                            />
+                            <span className="relative h-5 w-9 rounded-full bg-border transition-colors peer-checked:bg-accent after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-bg-card after:shadow-sm after:transition-transform peer-checked:after:translate-x-4" />
+                            <span>{t('login.remember')}</span>
+                        </label>
                         {loginError && (
                             <div className="text-danger text-sm text-center animate-fade-in flex items-center justify-center gap-1.5">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="15" x2="9" y1="9" y2="15" /><line x1="9" x2="15" y1="9" y2="15" /></svg>
@@ -615,7 +642,7 @@ export default function WebhookTestPage() {
     return (
         <div className="min-h-screen bg-bg">
             {/* Header */}
-            <div style={{
+            <div className="webhook-header" style={{
                 borderBottom: '1px solid var(--border)',
                 background: 'var(--bg-card)',
                 padding: '12px 20px',
@@ -629,6 +656,7 @@ export default function WebhookTestPage() {
             }}>
                 <Link
                     href="/"
+                    className="webhook-back-button"
                     style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -644,8 +672,9 @@ export default function WebhookTestPage() {
                 >
                     <ArrowLeftIcon />
                 </Link>
-                <div style={{ flex: 1, position: 'relative' }}>
+                <div className="webhook-header-nav" style={{ flex: 1, position: 'relative' }}>
                     <button
+                        className="webhook-header-menu"
                         onClick={() => setNavOpen(!navOpen)}
                         style={{
                             display: 'flex',
@@ -658,11 +687,11 @@ export default function WebhookTestPage() {
                             color: 'inherit',
                         }}
                     >
-                        <div>
-                            <h1 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--fg)', margin: 0, textAlign: 'left' }}>
+                        <div className="webhook-header-title">
+                            <h1 className="webhook-title" style={{ fontSize: '16px', fontWeight: 700, color: 'var(--fg)', margin: 0, textAlign: 'left' }}>
                                 Webhook Tester
                             </h1>
-                            <p style={{ fontSize: '12px', color: 'var(--fg-muted)', margin: 0, textAlign: 'left' }}>
+                            <p className="webhook-subtitle" style={{ fontSize: '12px', color: 'var(--fg-muted)', margin: 0, textAlign: 'left' }}>
                                 Unified Mayar Webhook — v2.0
                             </p>
                         </div>
@@ -736,7 +765,7 @@ export default function WebhookTestPage() {
                         </>
                     )}
                 </div>
-                <div style={{
+                <div className="webhook-live-badge" style={{
                     fontSize: '11px',
                     padding: '4px 10px',
                     borderRadius: '999px',
@@ -749,7 +778,7 @@ export default function WebhookTestPage() {
                 </div>
             </div>
 
-            <div style={{
+            <div className="webhook-content" style={{
                 maxWidth: '960px',
                 margin: '0 auto',
                 padding: '24px 20px',
@@ -758,7 +787,7 @@ export default function WebhookTestPage() {
                 gap: '20px',
             }}>
                 {/* Left Column — Payload Editor */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div className="webhook-editor-column" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     {/* Presets */}
                     <div style={{
                         background: 'var(--bg-card)',
@@ -897,7 +926,7 @@ export default function WebhookTestPage() {
                 </div>
 
                 {/* Right Column — Response Logs */}
-                <div style={{
+                <div className="webhook-response-column" style={{
                     background: 'var(--bg-card)',
                     border: '1px solid var(--border)',
                     borderRadius: '12px',
@@ -1051,7 +1080,7 @@ export default function WebhookTestPage() {
             </div>
 
             {/* Footer: Webhook URL */}
-            <div style={{
+            <div className="webhook-footer" style={{
                 marginTop: '24px',
                 padding: '16px 20px',
                 background: 'var(--bg-card)',
@@ -1060,7 +1089,7 @@ export default function WebhookTestPage() {
                 textAlign: 'center',
             }}>
                 <p style={{ fontSize: '12px', color: 'var(--fg-muted)', marginBottom: '6px' }}>Mayar Webhook Endpoint</p>
-                <code style={{
+                <code className="webhook-url" style={{
                     fontSize: '13px',
                     color: 'var(--fg)',
                     fontFamily: 'var(--font-geist-mono), monospace',
@@ -1075,11 +1104,87 @@ export default function WebhookTestPage() {
                 </code>
             </div>
 
-            {/* Mobile: stack columns */}
+            {/* Mobile layout */}
             <style>{`
+                .webhook-header,
+                .webhook-header-nav,
+                .webhook-header-menu,
+                .webhook-header-title,
+                .webhook-editor-column,
+                .webhook-response-column {
+                    min-width: 0;
+                }
+
+                .webhook-content {
+                    width: 100%;
+                }
+
+                .webhook-url {
+                    display: inline-block;
+                    max-width: 100%;
+                    overflow-wrap: anywhere;
+                    white-space: normal;
+                }
+
                 @media (max-width: 768px) {
-                    div[style*="gridTemplateColumns"] {
+                    .webhook-header {
+                        padding: 10px 12px !important;
+                        gap: 8px !important;
+                    }
+
+                    .webhook-back-button {
+                        flex-shrink: 0;
+                        padding: 6px 8px !important;
+                    }
+
+                    .webhook-header-menu {
+                        width: 100%;
+                        gap: 5px !important;
+                    }
+
+                    .webhook-header-title {
+                        overflow: hidden;
+                    }
+
+                    .webhook-title,
+                    .webhook-subtitle {
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    }
+
+                    .webhook-title {
+                        font-size: 15px !important;
+                    }
+
+                    .webhook-live-badge {
+                        flex-shrink: 0;
+                        padding: 4px 8px !important;
+                    }
+
+                    .webhook-content {
                         grid-template-columns: 1fr !important;
+                        gap: 16px !important;
+                        padding: 16px 12px !important;
+                    }
+
+                    .webhook-editor-column,
+                    .webhook-response-column {
+                        width: 100%;
+                    }
+
+                    .webhook-response-column {
+                        min-height: 280px;
+                    }
+
+                    .webhook-footer {
+                        margin: 0 12px 16px !important;
+                        padding: 14px 12px !important;
+                    }
+
+                    .webhook-url {
+                        font-size: 11px !important;
+                        padding: 6px 8px !important;
                     }
                 }
             `}</style>

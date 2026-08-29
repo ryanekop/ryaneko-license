@@ -5,7 +5,8 @@ export const ADMIN_SESSION_COOKIE = 'rl_admin_session';
 export const LEGACY_ADMIN_ID = '00000000-0000-0000-0000-000000000000';
 export const LEGACY_ADMIN_EMAIL = 'legacy-admin';
 
-const SESSION_TTL_SECONDS = 12 * 60 * 60;
+export const ADMIN_SESSION_TTL_SECONDS = 12 * 60 * 60;
+export const REMEMBERED_ADMIN_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 function getSessionSecret() {
     return process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_PASSWORD || '';
@@ -43,9 +44,9 @@ function safeEqual(a: string, b: string) {
     return timingSafeEqual(digest(a), digest(b));
 }
 
-export function createAdminSessionValue() {
+export function createAdminSessionValue(ttlSeconds = ADMIN_SESSION_TTL_SECONDS) {
     const now = Math.floor(Date.now() / 1000);
-    const payload = encodeBase64Url(JSON.stringify({ iat: now, exp: now + SESSION_TTL_SECONDS }));
+    const payload = encodeBase64Url(JSON.stringify({ iat: now, exp: now + ttlSeconds }));
     return `${payload}.${sign(payload)}`;
 }
 
@@ -103,10 +104,12 @@ export function isSameOriginRequest(request: NextRequest) {
     }
 }
 
-export const adminSessionCookieOptions = {
-    httpOnly: true,
-    sameSite: 'lax' as const,
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: SESSION_TTL_SECONDS,
-};
+export function getAdminSessionCookieOptions(remember = false) {
+    return {
+        httpOnly: true,
+        sameSite: 'lax' as const,
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        ...(remember ? { maxAge: REMEMBERED_ADMIN_SESSION_TTL_SECONDS } : {}),
+    };
+}

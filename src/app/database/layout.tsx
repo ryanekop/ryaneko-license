@@ -82,6 +82,8 @@ export default function DatabaseLayout({ children }: DatabaseLayoutProps) {
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [loginLoading, setLoginLoading] = useState(false);
+    const [authChecking, setAuthChecking] = useState(true);
+    const [remember, setRemember] = useState(false);
     const [navOpen, setNavOpen] = useState(false);
     const pathname = usePathname();
     const { theme, toggleTheme } = useTheme();
@@ -92,8 +94,13 @@ export default function DatabaseLayout({ children }: DatabaseLayoutProps) {
     ];
 
     useEffect(() => {
-        const saved = sessionStorage.getItem('admin_auth');
-        if (saved === 'true') setIsAuthenticated(true);
+        const controller = new AbortController();
+        fetch('/api/admin/auth', { signal: controller.signal, cache: 'no-store' })
+            .then((res) => res.ok ? res.json() : { authenticated: false })
+            .then((data: { authenticated?: boolean }) => setIsAuthenticated(data.authenticated === true))
+            .catch(() => undefined)
+            .finally(() => setAuthChecking(false));
+        return () => controller.abort();
     }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
@@ -105,11 +112,11 @@ export default function DatabaseLayout({ children }: DatabaseLayoutProps) {
             const res = await fetch('/api/admin/auth', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password }),
+                body: JSON.stringify({ password, remember }),
             });
             if (res.ok) {
                 setIsAuthenticated(true);
-                sessionStorage.setItem('admin_auth', 'true');
+                setPassword('');
             } else {
                 setError(t('login.error'));
             }
@@ -119,6 +126,14 @@ export default function DatabaseLayout({ children }: DatabaseLayoutProps) {
             setLoginLoading(false);
         }
     };
+
+    if (authChecking) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-bg">
+                <span className="w-5 h-5 border-2 border-fg-muted/30 border-t-fg rounded-full animate-spin" aria-label={t('login.loading')} />
+            </div>
+        );
+    }
 
     if (!isAuthenticated) {
         return (
@@ -168,6 +183,18 @@ export default function DatabaseLayout({ children }: DatabaseLayoutProps) {
                                 )}
                             </button>
                         </div>
+                        <label className={`flex items-center gap-2.5 text-sm text-fg-secondary select-none w-fit ${loginLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                            <input
+                                type="checkbox"
+                                role="switch"
+                                checked={remember}
+                                onChange={(e) => setRemember(e.target.checked)}
+                                disabled={loginLoading}
+                                className="peer sr-only"
+                            />
+                            <span className="relative h-5 w-9 rounded-full bg-border transition-colors peer-checked:bg-accent after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-bg-card after:shadow-sm after:transition-transform peer-checked:after:translate-x-4" />
+                            <span>{t('login.remember')}</span>
+                        </label>
                         {error && (
                             <div className="text-danger text-sm text-center animate-fade-in flex items-center justify-center gap-1.5">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="15" x2="9" y1="9" y2="15" /><line x1="9" x2="15" y1="9" y2="15" /></svg>
@@ -256,8 +283,8 @@ export default function DatabaseLayout({ children }: DatabaseLayoutProps) {
                             <button
                                 onClick={() => {
                                     void fetch('/api/admin/auth', { method: 'DELETE' });
-                                    sessionStorage.removeItem('admin_auth');
                                     setIsAuthenticated(false);
+                                    setRemember(false);
                                 }}
                                 className="ml-1 h-8 px-3 text-xs text-danger border border-border rounded-lg cursor-pointer hover:bg-danger/10 hover:border-danger/30 transition-all active:scale-95 flex items-center gap-1.5 font-medium"
                             >
