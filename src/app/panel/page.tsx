@@ -140,6 +140,13 @@ const EXTERNAL_LINKS = [
         iconUrl: 'https://www.google.com/s2/favicons?domain=studio-supabase.clientdesk.id&sz=128',
         color: 'text-teal-600',
         bg: 'bg-teal-600/5'
+    },
+    {
+        name: 'Sentry',
+        url: 'https://sentry.io/',
+        iconUrl: 'https://www.google.com/s2/favicons?domain=sentry.io&sz=128',
+        color: 'text-purple-600',
+        bg: 'bg-purple-600/5'
     }
 ];
 
