@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateDeviceHash } from '@/lib/crypto';
+import { GENERIC_WINDOWS_ID, resolveDeviceBinding } from '@/lib/device-binding';
 import { escapeTelegramHtml, notifyActivation, notifyAlert } from '@/lib/telegram';
 import { createRateLimiter, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 import type { ActivationRequest, ActivationResponse, License } from '@/lib/types';
@@ -114,7 +115,41 @@ export async function POST(request: NextRequest) {
 
         // Check if already activated on different device
         if (licenseData.status === 'used' && licenseData.device_id) {
-            if (licenseData.device_id !== device_id) {
+            const now = new Date().toISOString();
+            const bindingResolution = await resolveDeviceBinding(
+                licenseData.device_id,
+                device_id,
+                async () => {
+                    const { data, error } = await supabaseAdmin
+                        .from('licenses')
+                        .update({
+                            device_type,
+                            device_id,
+                            device_hash: generateDeviceHash(serial_key, device_id),
+                            last_active_at: now,
+                            updated_at: now,
+                        })
+                        .eq('id', licenseData.id)
+                        .ilike('device_id', GENERIC_WINDOWS_ID)
+                        .select('device_id')
+                        .maybeSingle();
+
+                    if (error) throw error;
+                    return data?.device_id === device_id;
+                },
+                async () => {
+                    const { data, error } = await supabaseAdmin
+                        .from('licenses')
+                        .select('device_id')
+                        .eq('id', licenseData.id)
+                        .single();
+
+                    if (error) throw error;
+                    return data?.device_id;
+                }
+            );
+
+            if (bindingResolution === 'mismatch') {
                 // Suspicious: trying to activate on different device
                 await logActivation(licenseData.id, 'activate', device_id, device_type, os_version, ip, false, 'Already activated on another device');
 
@@ -134,6 +169,27 @@ export async function POST(request: NextRequest) {
                     { success: false, message: 'License already activated on another device' },
                     { status: 403 }
                 );
+            }
+
+            if (bindingResolution === 'rebound') {
+                await logActivation(
+                    licenseData.id,
+                    'activate',
+                    device_id,
+                    device_type,
+                    os_version,
+                    ip,
+                    true,
+                    `Legacy generic device rebound: ${GENERIC_WINDOWS_ID} -> ${device_id}`
+                );
+
+                return NextResponse.json<ActivationResponse>({
+                    success: true,
+                    message: 'License already activated on this device',
+                    license_id: licenseData.id,
+                    product_name: licenseData.product?.name,
+                    activated_at: licenseData.activated_at,
+                });
             }
 
             // Same device, just verify

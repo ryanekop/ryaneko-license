@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { generateDeviceHash } from '@/lib/crypto';
+import { GENERIC_WINDOWS_ID, resolveDeviceBinding } from '@/lib/device-binding';
 import { escapeTelegramHtml, notifyAlert } from '@/lib/telegram';
 import { createRateLimiter, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 import type { VerifyRequest, VerifyResponse, License } from '@/lib/types';
@@ -76,8 +78,41 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const now = new Date().toISOString();
+        const bindingResolution = await resolveDeviceBinding(
+            licenseData.device_id,
+            device_id,
+            async () => {
+                const { data, error } = await supabaseAdmin
+                    .from('licenses')
+                    .update({
+                        device_id,
+                        device_hash: generateDeviceHash(serial_key, device_id),
+                        last_active_at: now,
+                        updated_at: now,
+                    })
+                    .eq('id', licenseData.id)
+                    .ilike('device_id', GENERIC_WINDOWS_ID)
+                    .select('device_id')
+                    .maybeSingle();
+
+                if (error) throw error;
+                return data?.device_id === device_id;
+            },
+            async () => {
+                const { data, error } = await supabaseAdmin
+                    .from('licenses')
+                    .select('device_id')
+                    .eq('id', licenseData.id)
+                    .single();
+
+                if (error) throw error;
+                return data?.device_id;
+            }
+        );
+
         // Check device match
-        if (licenseData.device_id !== device_id) {
+        if (bindingResolution === 'mismatch') {
             await logVerification(licenseData.id, device_id, ip, false, 'Device mismatch');
 
             // Alert for suspicious activity (multiple devices trying same key)
@@ -99,10 +134,26 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        if (bindingResolution === 'rebound') {
+            await logVerification(
+                licenseData.id,
+                device_id,
+                ip,
+                true,
+                `Legacy generic device rebound: ${GENERIC_WINDOWS_ID} -> ${device_id}`
+            );
+
+            return NextResponse.json<VerifyResponse>({
+                valid: true,
+                message: 'License valid',
+                product_name: licenseData.product?.name,
+            });
+        }
+
         // Update last active timestamp
         await supabaseAdmin
             .from('licenses')
-            .update({ last_active_at: new Date().toISOString() })
+            .update({ last_active_at: now })
             .eq('id', licenseData.id);
 
         // Log successful verification
