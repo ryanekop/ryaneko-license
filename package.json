@@ -10,15 +10,13 @@
     "test": "node --experimental-strip-types --test src/lib/*.test.ts"
   },
   "dependencies": {
-    "@react-email/components": "^1.0.7",
     "@supabase/supabase-js": "^2.95.3",
     "crypto-js": "^4.2.0",
-    "next": "16.1.6",
+    "next": "16.3.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-easy-crop": "^5.5.7",
-    "resend": "^6.9.1",
-    "sharp": "^0.34.5"
+    "sharp": "0.35.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -27,7 +25,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
