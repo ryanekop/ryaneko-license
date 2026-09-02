@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import { AdminModal } from '@/components/AdminModal';
 import { Pagination } from '@/components/Pagination';
 import { ProductSubnav, ProductSubnavIcons, type ProductSubnavKey } from '@/components/ProductSubnav';
+import { VendorAssetField } from '@/components/VendorAssetField';
 import { DEFAULT_PAGE_SIZE, type PageSize, type PaginationMeta } from '@/lib/pagination';
 import { useLang } from '@/lib/providers';
 import { resolveTenantAssetUrl } from '@/lib/tenant-asset-url';
+import { cleanupVendorAssets, uploadVendorAsset } from '@/lib/vendor-asset-client';
 import { createVendorSlug } from '@/lib/vendor-slug';
 import type { VendorSortMode } from '@/lib/vendor-sort';
 
@@ -109,6 +111,8 @@ export default function VendorClientDeskPage() {
     const [formDomain, setFormDomain] = useState('');
     const [formLogoUrl, setFormLogoUrl] = useState('');
     const [formFaviconUrl, setFormFaviconUrl] = useState('');
+    const [formLogoFile, setFormLogoFile] = useState<File | null>(null);
+    const [formFaviconFile, setFormFaviconFile] = useState<File | null>(null);
 
     const [formFooter, setFormFooter] = useState('');
     const [formLoading, setFormLoading] = useState(false);
@@ -152,6 +156,8 @@ export default function VendorClientDeskPage() {
         setFormDomain('');
         setFormLogoUrl('');
         setFormFaviconUrl('');
+        setFormLogoFile(null);
+        setFormFaviconFile(null);
 
         setFormFooter('');
         setFormResult(null);
@@ -176,6 +182,8 @@ export default function VendorClientDeskPage() {
         setFormDomain(tenant.domain || '');
         setFormLogoUrl(tenant.logo_url || '');
         setFormFaviconUrl(tenant.favicon_url || '');
+        setFormLogoFile(null);
+        setFormFaviconFile(null);
 
         setFormFooter(tenant.footer_text || '');
         setFormResult(null);
@@ -193,25 +201,51 @@ export default function VendorClientDeskPage() {
                 return;
             }
 
-            const body = editingTenant
-                ? { id: editingTenant.id, slug: slugForPayload, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, footer_text: formFooter || null }
-                : { slug: slugForPayload, name: formName, domain: formDomain || null, logo_url: formLogoUrl || null, favicon_url: formFaviconUrl || null, footer_text: formFooter || null };
+            const uploadedUrls: string[] = [];
+            let nextLogoUrl = formLogoUrl || null;
+            let nextFaviconUrl = formFaviconUrl || null;
 
-            const res = await fetch('/api/admin/vendor-clientdesk', {
-                method: editingTenant ? 'PUT' : 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            const data = await res.json();
-            if (res.ok) {
+            try {
+                if (formLogoFile) {
+                    const uploaded = await uploadVendorAsset({ product: 'clientdesk', tenantSlug: slugForPayload, assetType: 'logo', file: formLogoFile });
+                    nextLogoUrl = uploaded.url;
+                    uploadedUrls.push(uploaded.url);
+                }
+                if (formFaviconFile) {
+                    const uploaded = await uploadVendorAsset({ product: 'clientdesk', tenantSlug: slugForPayload, assetType: 'favicon', file: formFaviconFile });
+                    nextFaviconUrl = uploaded.url;
+                    uploadedUrls.push(uploaded.url);
+                }
+
+                const body = editingTenant
+                    ? { id: editingTenant.id, slug: slugForPayload, name: formName, domain: formDomain || null, logo_url: nextLogoUrl, favicon_url: nextFaviconUrl, footer_text: formFooter || null }
+                    : { slug: slugForPayload, name: formName, domain: formDomain || null, logo_url: nextLogoUrl, favicon_url: nextFaviconUrl, footer_text: formFooter || null };
+
+                const res = await fetch('/api/admin/vendor-clientdesk', {
+                    method: editingTenant ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await res.json().catch(() => null);
+                if (!res.ok) throw new Error(data?.error || 'Failed');
+
+                if (editingTenant) {
+                    const replacedUrls = [
+                        editingTenant.logo_url && editingTenant.logo_url !== nextLogoUrl ? editingTenant.logo_url : null,
+                        editingTenant.favicon_url && editingTenant.favicon_url !== nextFaviconUrl ? editingTenant.favicon_url : null,
+                    ];
+                    void cleanupVendorAssets({ product: 'clientdesk', tenantSlug: slugForPayload, urls: replacedUrls });
+                }
+
                 setFormResult({ success: true, message: editingTenant ? t('vendor.updated') : t('vendor.created') });
                 fetchTenants();
                 setTimeout(() => setShowForm(false), 1000);
-            } else {
-                setFormResult({ success: false, message: data.error || 'Failed' });
+            } catch (error) {
+                await cleanupVendorAssets({ product: 'clientdesk', tenantSlug: slugForPayload, urls: uploadedUrls });
+                throw error;
             }
-        } catch {
-            setFormResult({ success: false, message: 'Connection error' });
+        } catch (error) {
+            setFormResult({ success: false, message: error instanceof Error ? error.message : t('vendor.assetUploadFailed') });
         } finally {
             setFormLoading(false);
         }
@@ -458,7 +492,7 @@ export default function VendorClientDeskPage() {
             </>)}
 
             {/* Create/Edit Dialog */}
-            <Dialog open={showForm} onClose={() => setShowForm(false)}>
+            <Dialog open={showForm} onClose={() => !formLoading && setShowForm(false)}>
                 <h3 className="text-lg font-semibold text-fg mb-1">
                     {editingTenant ? t('vendor.editTitle') : t('vendor.createTitle')}
                 </h3>
@@ -506,25 +540,27 @@ export default function VendorClientDeskPage() {
                         />
                     </div>
 
-                    <div>
-                        <label className="text-xs font-medium text-fg mb-1 block">{t('vendor.formLogo')}</label>
-                        <input
-                            value={formLogoUrl}
-                            onChange={(e) => setFormLogoUrl(e.target.value)}
-                            placeholder="https://..."
-                            className="w-full px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20"
-                        />
-                    </div>
+                    <VendorAssetField
+                        assetType="logo"
+                        label={t('vendor.formLogo')}
+                        url={formLogoUrl}
+                        domain={formDomain || editingTenant?.domain || null}
+                        file={formLogoFile}
+                        disabled={formLoading}
+                        onUrlChange={setFormLogoUrl}
+                        onFileChange={setFormLogoFile}
+                    />
 
-                    <div>
-                        <label className="text-xs font-medium text-fg mb-1 block">{t('vendor.formFavicon')}</label>
-                        <input
-                            value={formFaviconUrl}
-                            onChange={(e) => setFormFaviconUrl(e.target.value)}
-                            placeholder="https://..."
-                            className="w-full px-3 py-2 bg-bg border border-border rounded-xl text-fg text-sm placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-accent/20"
-                        />
-                    </div>
+                    <VendorAssetField
+                        assetType="favicon"
+                        label={t('vendor.formFavicon')}
+                        url={formFaviconUrl}
+                        domain={formDomain || editingTenant?.domain || null}
+                        file={formFaviconFile}
+                        disabled={formLoading}
+                        onUrlChange={setFormFaviconUrl}
+                        onFileChange={setFormFaviconFile}
+                    />
 
                     <div>
                         <label className="text-xs font-medium text-fg mb-1 block">{t('vendor.formFooter')}</label>
@@ -541,7 +577,7 @@ export default function VendorClientDeskPage() {
                         <p className="text-xs text-fg-muted mb-2">{t('vendor.preview')}</p>
                         <div className="flex items-center gap-3">
                             {previewLogoUrl ? (
-                                <img src={previewLogoUrl} alt="Preview" className="w-8 h-8 rounded-lg object-cover border border-border" />
+                                <img src={previewLogoUrl} alt="Preview" className="w-8 h-8 rounded-lg object-contain border border-border" />
                             ) : (
                                 <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs bg-gray-500 dark:bg-gray-600">
                                     {formName ? formName.charAt(0).toUpperCase() : '?'}
