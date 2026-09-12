@@ -10,6 +10,19 @@ Run the protected endpoint every minute on the VPS:
 * * * * * /root/ryaneko-license/scripts/run-subscription-plan-change-cron.sh >/dev/null
 ```
 
+## Mayar hosted checkout
+
+ClientDesk requests an immutable hosted checkout through Ryan Eko License so
+the buyer's name, email, and mobile number are prefilled by Mayar. Configure
+`MAYAR_API_KEY`, `MAYAR_ENV`, both Mayar product IDs, and the same
+`RYANEKO_LICENSE_SERVICE_SECRET` in Ryan Eko License and ClientDesk.
+
+Register the Mayar webhook using the protected path (not `/api/mayar/webhook`):
+
+```text
+https://license.ryanekoapp.web.id/api/mayar/webhook/<MAYAR_WEBHOOK_SECRET>
+```
+
 ## Getting Started
 
 First, run the development server:

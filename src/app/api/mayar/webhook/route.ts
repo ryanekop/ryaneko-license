@@ -1054,7 +1054,7 @@ async function handleFastpikSubscription(
     const productName = orderData.productName || orderData.product_name || payload.data?.productName || payload.data?.product_name || 'unknown';
     const mayarSource = extractMayarSource(getMayarCustomFields(orderData, payload));
 
-    console.log(`[Fastpik Webhook] Email: ${email}, Name: ${name}, Status: ${rawStatus}, Amount: ${amount}`);
+    console.log(`[Fastpik Webhook] Received status=${rawStatus}`);
 
     if (!email) {
         console.error('[Fastpik Webhook] No email found in payload');
@@ -1208,7 +1208,7 @@ async function handleFastpikSubscription(
         `🔑 Transaction: ${tg(transactionId)}`
     );
 
-    console.log(`[Fastpik Webhook] ✅ Subscription activated: ${email} -> ${planTier}`);
+    console.log(`[Fastpik Webhook] Subscription activated: ${planTier}`);
     return jsonResponse('Success', `Fastpik subscription activated: ${planTier}`);
 }
 
@@ -1253,7 +1253,7 @@ async function handleClientDeskSubscription(
     const transactionId = orderData.id || data.transactionId || directPayload.id || `TRX-${Date.now()}`;
     const mayarSource = extractMayarSource(getMayarCustomFields(orderData, payload));
 
-    console.log(`[Client Desk Webhook] Email: ${email}, Name: ${name}, Status: ${rawStatus}, Amount: ${amount}`);
+    console.log(`[Client Desk Webhook] Received status=${rawStatus}`);
 
     if (!email) {
         console.error('[Client Desk Webhook] No email found in payload');
@@ -1431,7 +1431,7 @@ async function handleClientDeskSubscription(
         `🔑 Transaction: ${tg(transactionId)}`
     );
 
-    console.log(`[Client Desk Webhook] ✅ Subscription processed: ${email} -> ${planTier}`);
+    console.log(`[Client Desk Webhook] Subscription processed: ${planTier}`);
     return jsonResponse(
         'Success',
         result.scheduled
@@ -1484,7 +1484,7 @@ async function handleBundleSubscription(
     const productName = orderData.productName || orderData.product_name || payload.data?.productName || payload.data?.product_name || 'unknown';
     const mayarSource = extractMayarSource(getMayarCustomFields(orderData, payload));
 
-    console.log(`[Bundle Webhook] Email: ${email}, Name: ${name}, Status: ${rawStatus}, Amount: ${amount}`);
+    console.log(`[Bundle Webhook] Received status=${rawStatus}`);
 
     if (!email) {
         return jsonResponse('Error', 'No email provided', 400);
@@ -1663,7 +1663,7 @@ async function handleBundleSubscription(
         formatBundleResultLine('Fastpik', fastpikResult)
     );
 
-    console.log(`[Bundle Webhook] ✅ Subscription activated: ${email} -> ${planTier}`);
+    console.log(`[Bundle Webhook] Subscription activated: ${planTier}`);
     return jsonResponse('Success', `Bundle activated: ${planTier}`);
 }
 
@@ -1787,7 +1787,7 @@ async function sendLicenseEmail(
         });
 
         if (!result.success) {
-            console.error(`[License Email] Failed to send to ${email}:`, result.error);
+            console.error('[License Email] Delivery failed:', result.error);
             await notifyAlert(
                 `<b>⚠️ Email Failed</b>\n\n` +
                 `📦 Product: ${tg(product.name)}\n` +
@@ -1797,7 +1797,7 @@ async function sendLicenseEmail(
             return false;
         }
 
-        console.log(`[License Email] ✅ Sent to ${email} for ${product.name}`);
+        console.log(`[License Email] Sent for ${product.name}`);
         return true;
     } catch (err: unknown) {
         console.error('[License Email] Error:', err);
@@ -1914,11 +1914,9 @@ async function handleLicensePurchase(
 // MAIN WEBHOOK ROUTER
 // =============================================
 
-export async function POST(request: NextRequest) {
+export async function processVerifiedLegacyWebhook(request: NextRequest) {
     try {
         const rawBody = await request.text();
-        console.log('[Mayar Webhook] Received:', rawBody);
-
         let payload: MayarWebhookPayload;
         try {
             payload = JSON.parse(rawBody);
@@ -2005,6 +2003,10 @@ export async function POST(request: NextRequest) {
         console.error('[Mayar Webhook] Error:', error);
         return jsonResponse('Error', String(error), 500);
     }
+}
+
+export async function POST() {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
 }
 
 // Health check
