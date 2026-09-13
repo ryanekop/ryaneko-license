@@ -21,6 +21,8 @@ export type ImmutableCheckoutResponse = {
     checkoutLink: string;
 };
 
+const MAYAR_REQUEST_TIMEOUT_MS = 12_000;
+
 const DEFAULT_BASE_URL: Record<MayarEnvironment, string> = {
     sandbox: 'https://api.mayar.io/hl/v2',
     production: 'https://api.mayar.id/hl/v2',
@@ -61,6 +63,7 @@ export async function mayarFetch<T>(path: string, init: RequestInit = {}) {
         ...init,
         headers,
         cache: 'no-store',
+        signal: init.signal || AbortSignal.timeout(MAYAR_REQUEST_TIMEOUT_MS),
     });
     let body: MayarEnvelope<T>;
     try {
@@ -79,12 +82,76 @@ export async function mayarFetch<T>(path: string, init: RequestInit = {}) {
     return body.data;
 }
 
+function isAllowedMayarCheckoutHost(hostname: string, environment: MayarEnvironment) {
+    if (environment === 'sandbox') return hostname === 'web.mayar.io' || hostname.endsWith('.mayar.shop');
+    return hostname === 'web.mayar.id' || hostname.endsWith('.myr.id') || hostname.endsWith('.mayar.shop');
+}
+
+function validCheckoutUrl(value: unknown, environment: MayarEnvironment) {
+    if (typeof value !== 'string') return null;
+    try {
+        const url = new URL(value);
+        return url.protocol === 'https:' &&
+            isAllowedMayarCheckoutHost(url.hostname, environment) &&
+            url.searchParams.has('immutable')
+            ? url.toString()
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+export function extractImmutableCheckoutUrl(
+    value: unknown,
+    environment: MayarEnvironment,
+    membershipTierId?: string,
+    depth = 0,
+): string | null {
+    if (depth > 3) return null;
+    const direct = validCheckoutUrl(value, environment);
+    if (direct) return direct;
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            if (membershipTierId && item && typeof item === 'object' && !Array.isArray(item)) {
+                const tier = item as Record<string, unknown>;
+                if (tier.id !== membershipTierId) continue;
+                const match = validCheckoutUrl(tier.specificPaymentLinkUrl, environment);
+                if (match) return match;
+                continue;
+            }
+            const match = extractImmutableCheckoutUrl(item, environment, membershipTierId, depth + 1);
+            if (match) return match;
+        }
+        return null;
+    }
+    if (!value || typeof value !== 'object') return null;
+    const row = value as Record<string, unknown>;
+    for (const key of ['checkoutLink']) {
+        const match = validCheckoutUrl(row[key], environment);
+        if (match) return match;
+    }
+    for (const key of ['membershipTiers', 'data', 'result']) {
+        const match = extractImmutableCheckoutUrl(row[key], environment, membershipTierId, depth + 1);
+        if (match) return match;
+    }
+    return null;
+}
+
+export function describeResponseShape(value: unknown) {
+    if (Array.isArray(value)) return { type: 'array', length: value.length };
+    if (value && typeof value === 'object') {
+        return { type: 'object', keys: Object.keys(value as Record<string, unknown>).sort().slice(0, 20) };
+    }
+    return { type: typeof value };
+}
+
 export function getMayarTransaction(transactionId: string) {
     return mayarFetch<MayarTransaction>(`/transactions/${encodeURIComponent(transactionId)}`);
 }
 
 export async function generateImmutableCheckout(input: {
     productId: string;
+    membershipTierId: string;
     customerInfo: { name: string; email: string; mobile: string };
     creditAmount: number;
 }) {
@@ -95,8 +162,13 @@ export async function generateImmutableCheckout(input: {
             Authorization: `Bearer ${config.apiKey}`,
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify(input),
+        body: JSON.stringify({
+            productId: input.productId,
+            customerInfo: input.customerInfo,
+            creditAmount: input.creditAmount,
+        }),
         cache: 'no-store',
+        signal: AbortSignal.timeout(MAYAR_REQUEST_TIMEOUT_MS),
     });
     let body: MayarEnvelope<ImmutableCheckoutResponse>;
     try {
@@ -105,17 +177,20 @@ export async function generateImmutableCheckout(input: {
         throw new MayarApiError(`Mayar returned HTTP ${response.status}`, response.status);
     }
     const statusCode = body.statusCode ?? response.status;
-    if (!response.ok || statusCode >= 400 || !body.data?.checkoutLink) {
+    if (!response.ok || statusCode >= 400) {
         throw new MayarApiError(
             body.messages ?? body.message ?? `Mayar returned HTTP ${response.status}`,
             statusCode,
             response.headers.get('retry-after'),
         );
     }
-    const checkoutUrl = new URL(body.data.checkoutLink);
-    const expectedHost = config.environment === 'production' ? 'web.mayar.id' : 'web.mayar.io';
-    if (checkoutUrl.protocol !== 'https:' || checkoutUrl.hostname !== expectedHost) {
-        throw new Error('Mayar returned an unexpected checkout URL');
+    const checkoutUrl = extractImmutableCheckoutUrl(body, config.environment, input.membershipTierId);
+    if (!checkoutUrl) {
+        console.warn('[Mayar Immutable Checkout] Unrecognized response shape:', {
+            envelope: describeResponseShape(body),
+            data: describeResponseShape(body.data),
+        });
+        throw new Error('Mayar returned an unrecognized checkout response');
     }
-    return checkoutUrl.toString();
+    return checkoutUrl;
 }

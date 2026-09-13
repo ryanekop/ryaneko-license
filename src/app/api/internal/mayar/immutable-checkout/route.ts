@@ -3,14 +3,15 @@ import { verifyCheckoutServiceSignature } from '@/lib/internal-checkout-signatur
 import {
     BUNDLE_PRICE_CATALOG,
     CLIENT_DESK_PRICE_CATALOG,
+    FASTPIK_PRICE_CATALOG,
     type ClientDeskPlan,
     type SubscriptionDuration,
 } from '@/lib/mayar-subscription-catalog';
 import { generateImmutableCheckout, MayarApiError } from '@/lib/mayar-v2';
 
-type CheckoutOffer = 'standalone' | 'bundle';
+type CheckoutOffer = 'standalone' | 'bundle' | 'fastpik';
 
-const OFFERS = new Set<CheckoutOffer>(['standalone', 'bundle']);
+const OFFERS = new Set<CheckoutOffer>(['standalone', 'bundle', 'fastpik']);
 const PLANS = new Set<ClientDeskPlan>(['basic', 'plus', 'pro']);
 const DURATIONS = new Set<SubscriptionDuration>(['monthly', 'quarterly', 'yearly']);
 
@@ -56,18 +57,28 @@ export async function POST(request: NextRequest) {
     const offer = body.offer as CheckoutOffer;
     const plan = body.plan as ClientDeskPlan;
     const duration = body.duration as SubscriptionDuration;
-    const catalog = offer === 'bundle' ? BUNDLE_PRICE_CATALOG : CLIENT_DESK_PRICE_CATALOG;
-    const price = catalog.find((entry) => entry.plan === plan && entry.duration === duration)?.price;
-    const productId = offer === 'bundle'
-        ? process.env.MAYAR_CLIENTDESK_FASTPIK_BUNDLE_PRODUCT_ID
-        : process.env.MAYAR_CLIENTDESK_PRODUCT_ID;
-    if (!price || !productId) {
+    const price = offer === 'fastpik'
+        ? FASTPIK_PRICE_CATALOG.find((entry) => entry.duration === duration)?.price
+        : (offer === 'bundle' ? BUNDLE_PRICE_CATALOG : CLIENT_DESK_PRICE_CATALOG)
+            .find((entry) => entry.plan === plan && entry.duration === duration)?.price;
+    const productId = offer === 'fastpik'
+        ? process.env.MAYAR_FASTPIK_PRODUCT_ID
+        : offer === 'bundle'
+            ? process.env.MAYAR_CLIENTDESK_FASTPIK_BUNDLE_PRODUCT_ID
+            : process.env.MAYAR_CLIENTDESK_PRODUCT_ID;
+    const membershipTierId = offer === 'fastpik'
+        ? process.env.MAYAR_FASTPIK_TIER_ID
+        : offer === 'bundle'
+            ? process.env[`MAYAR_BUNDLE_${plan.toUpperCase()}_TIER_ID`]
+            : process.env[`MAYAR_CLIENTDESK_${plan.toUpperCase()}_TIER_ID`];
+    if (!price || !productId || !membershipTierId) {
         return NextResponse.json({ error: 'Checkout product is not configured' }, { status: 503 });
     }
 
     try {
         const checkoutUrl = await generateImmutableCheckout({
             productId,
+            membershipTierId,
             customerInfo: {
                 name: body.customerInfo.name.trim(),
                 email: body.customerInfo.email.trim().toLowerCase(),

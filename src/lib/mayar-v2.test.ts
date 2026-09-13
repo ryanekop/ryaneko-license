@@ -1,6 +1,26 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { generateImmutableCheckout } from './mayar-v2.ts';
+import { extractImmutableCheckoutUrl, generateImmutableCheckout } from './mayar-v2.ts';
+
+test('normalizes documented and production wrapper checkout responses', () => {
+    const url = 'https://web.mayar.id/pl/checkout?immutable=signed';
+    assert.equal(extractImmutableCheckoutUrl({ data: { checkoutLink: url } }, 'production'), url);
+    assert.equal(extractImmutableCheckoutUrl({ data: [{ checkoutLink: url }] }, 'production'), url);
+    assert.equal(extractImmutableCheckoutUrl({ data: url }, 'production'), url);
+    assert.equal(extractImmutableCheckoutUrl({ data: { checkoutLink: 'https://example.com/phishing?immutable=x' } }, 'production'), null);
+    assert.equal(extractImmutableCheckoutUrl({ data: { checkoutLink: 'https://web.mayar.id/pl/checkout' } }, 'production'), null);
+});
+
+test('selects the immutable URL for the requested membership tier', () => {
+    const basicUrl = 'https://ryaneko.myr.id/m/client-desk-access?immutable=basic';
+    const proUrl = 'https://ryaneko.myr.id/m/client-desk-access?immutable=pro';
+    const response = { data: { membershipTiers: [
+        { id: 'pro', specificPaymentLinkUrl: proUrl },
+        { id: 'basic', specificPaymentLinkUrl: basicUrl },
+    ] } };
+    assert.equal(extractImmutableCheckoutUrl(response, 'production', 'basic'), basicUrl);
+    assert.equal(extractImmutableCheckoutUrl(response, 'production', 'missing'), null);
+});
 
 test('generates an immutable hosted checkout with trusted customer data', async () => {
     const previousKey = process.env.MAYAR_API_KEY;
@@ -22,6 +42,7 @@ test('generates an immutable hosted checkout with trusted customer data', async 
     try {
         const checkoutUrl = await generateImmutableCheckout({
             productId: 'product-1',
+            membershipTierId: 'tier-1',
             customerInfo: { name: 'Budi', email: 'budi@example.com', mobile: '+628123456789' },
             creditAmount: 49_000,
         });
@@ -55,9 +76,10 @@ test('rejects a checkout URL outside the selected Mayar environment', async () =
     try {
         await assert.rejects(() => generateImmutableCheckout({
             productId: 'product-1',
+            membershipTierId: 'tier-1',
             customerInfo: { name: 'Budi', email: 'budi@example.com', mobile: '+628123456789' },
             creditAmount: 49_000,
-        }), /unexpected checkout URL/);
+        }), /unrecognized checkout response/);
     } finally {
         globalThis.fetch = previousFetch;
         if (previousKey === undefined) delete process.env.MAYAR_API_KEY;
