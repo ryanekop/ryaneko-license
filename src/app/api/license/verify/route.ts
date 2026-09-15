@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateDeviceHash } from '@/lib/crypto';
-import { GENERIC_WINDOWS_ID, resolveDeviceBinding } from '@/lib/device-binding';
+import { GENERIC_WINDOWS_ID, isWindowsDeviceType, resolveDeviceBinding } from '@/lib/device-binding';
 import { escapeTelegramHtml, notifyAlert } from '@/lib/telegram';
 import { createRateLimiter, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 import type { VerifyRequest, VerifyResponse, License } from '@/lib/types';
@@ -108,7 +108,8 @@ export async function POST(request: NextRequest) {
 
                 if (error) throw error;
                 return data?.device_id;
-            }
+            },
+            { allowGenericFallback: isWindowsDeviceType(licenseData.device_type) }
         );
 
         // Check device match
@@ -141,6 +142,40 @@ export async function POST(request: NextRequest) {
                 ip,
                 true,
                 `Legacy generic device rebound: ${GENERIC_WINDOWS_ID} -> ${device_id}`
+            );
+
+            return NextResponse.json<VerifyResponse>({
+                valid: true,
+                message: 'License valid',
+                product_name: licenseData.product?.name,
+            });
+        }
+
+        if (bindingResolution === 'generic-fallback') {
+            await supabaseAdmin
+                .from('licenses')
+                .update({ last_active_at: now })
+                .eq('id', licenseData.id);
+
+            await logVerification(
+                licenseData.id,
+                device_id,
+                ip,
+                true,
+                `Generic Windows fallback accepted; retained binding: ${licenseData.device_id}`
+            );
+
+            await notifyAlert(
+                `<b>⚠️ GENERIC WINDOWS FALLBACK ACCEPTED</b>\n\n` +
+                `⚙️ Action: verify\n` +
+                `🔑 Serial: <code>${tg(serial_key)}</code>\n` +
+                `📦 Product: ${tg(licenseData.product?.name || 'Unknown')}\n` +
+                `👤 Name: ${tg(licenseData.customer_name || 'Unknown')}\n` +
+                `📧 Email: ${tg(licenseData.customer_email || '-')}\n` +
+                `🖥 Retained Device: <code>${tg(licenseData.device_id)}</code>\n` +
+                `🆕 Received Device: <code>${tg(device_id)}</code>\n` +
+                `💻 ${tg(licenseData.device_type || '-')}\n` +
+                `🌐 IP: ${tg(ip)}`
             );
 
             return NextResponse.json<VerifyResponse>({

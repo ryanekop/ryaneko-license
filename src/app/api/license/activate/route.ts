@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateDeviceHash } from '@/lib/crypto';
-import { GENERIC_WINDOWS_ID, resolveDeviceBinding } from '@/lib/device-binding';
+import { GENERIC_WINDOWS_ID, isWindowsDeviceType, resolveDeviceBinding } from '@/lib/device-binding';
 import { escapeTelegramHtml, notifyActivation, notifyAlert } from '@/lib/telegram';
 import { createRateLimiter, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 import type { ActivationRequest, ActivationResponse, License } from '@/lib/types';
@@ -146,7 +146,8 @@ export async function POST(request: NextRequest) {
 
                     if (error) throw error;
                     return data?.device_id;
-                }
+                },
+                { allowGenericFallback: isWindowsDeviceType(licenseData.device_type) }
             );
 
             if (bindingResolution === 'mismatch') {
@@ -181,6 +182,45 @@ export async function POST(request: NextRequest) {
                     ip,
                     true,
                     `Legacy generic device rebound: ${GENERIC_WINDOWS_ID} -> ${device_id}`
+                );
+
+                return NextResponse.json<ActivationResponse>({
+                    success: true,
+                    message: 'License already activated on this device',
+                    license_id: licenseData.id,
+                    product_name: licenseData.product?.name,
+                    activated_at: licenseData.activated_at,
+                });
+            }
+
+            if (bindingResolution === 'generic-fallback') {
+                await supabaseAdmin
+                    .from('licenses')
+                    .update({ last_active_at: now })
+                    .eq('id', licenseData.id);
+
+                await logActivation(
+                    licenseData.id,
+                    'activate',
+                    device_id,
+                    device_type,
+                    os_version,
+                    ip,
+                    true,
+                    `Generic Windows fallback accepted; retained binding: ${licenseData.device_id}`
+                );
+
+                await notifyAlert(
+                    `<b>⚠️ GENERIC WINDOWS FALLBACK ACCEPTED</b>\n\n` +
+                    `⚙️ Action: activate\n` +
+                    `🔑 Serial: <code>${tg(serial_key)}</code>\n` +
+                    `📦 Product: ${tg(licenseData.product?.name || 'Unknown')}\n` +
+                    `👤 Name: ${tg(licenseData.customer_name || 'Unknown')}\n` +
+                    `📧 Email: ${tg(licenseData.customer_email || '-')}\n` +
+                    `🖥 Retained Device: <code>${tg(licenseData.device_id)}</code>\n` +
+                    `🆕 Received Device: <code>${tg(device_id)}</code>\n` +
+                    `💻 ${tg(licenseData.device_type || '-')}${os_version ? ' · ' + tg(os_version) : ''}\n` +
+                    `🌐 IP: ${tg(ip)}`
                 );
 
                 return NextResponse.json<ActivationResponse>({
