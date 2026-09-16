@@ -605,9 +605,9 @@ export default function WebhookTestPage() {
         setSending(true);
         try {
             const parsed = JSON.parse(jsonInput);
-            addLog('request', `POST /api/mayar/webhook`, JSON.stringify(parsed, null, 2));
+            addLog('request', `POST /api/admin/mayar/webhook-test`, JSON.stringify(parsed, null, 2));
 
-            const res = await fetch('/api/mayar/webhook', {
+            const res = await fetch('/api/admin/mayar/webhook-test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(parsed),
@@ -1079,7 +1079,7 @@ export default function WebhookTestPage() {
                 </div>
             </div>
 
-            {/* Footer: Webhook URL */}
+            {/* Footer: Webhook URLs */}
             <div className="webhook-footer" style={{
                 marginTop: '24px',
                 padding: '16px 20px',
@@ -1088,7 +1088,7 @@ export default function WebhookTestPage() {
                 borderRadius: '12px',
                 textAlign: 'center',
             }}>
-                <p style={{ fontSize: '12px', color: 'var(--fg-muted)', marginBottom: '6px' }}>Mayar Webhook Endpoint</p>
+                <p style={{ fontSize: '12px', color: 'var(--fg-muted)', marginBottom: '6px' }}>Admin Simulator Endpoint</p>
                 <code className="webhook-url" style={{
                     fontSize: '13px',
                     color: 'var(--fg)',
@@ -1100,7 +1100,21 @@ export default function WebhookTestPage() {
                     userSelect: 'all',
                     cursor: 'text',
                 }}>
-                    https://license.ryanekoapp.web.id/api/mayar/webhook
+                    /api/admin/mayar/webhook-test
+                </code>
+                <p style={{ fontSize: '12px', color: 'var(--fg-muted)', margin: '14px 0 6px' }}>Mayar Production Webhook</p>
+                <code className="webhook-url" style={{
+                    fontSize: '13px',
+                    color: 'var(--fg)',
+                    fontFamily: 'var(--font-geist-mono), monospace',
+                    background: 'var(--bg)',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    userSelect: 'all',
+                    cursor: 'text',
+                }}>
+                    https://license.ryanekoapp.web.id/api/mayar/webhook/&lt;MAYAR_WEBHOOK_SECRET&gt;
                 </code>
             </div>
 
