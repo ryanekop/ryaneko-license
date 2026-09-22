@@ -12,7 +12,7 @@ AS $function$
   WITH member_ids AS (SELECT member_user_id FROM public.workspace_memberships WHERE status IN ('invited','active','disabled') AND member_user_id IS NOT NULL AND member_user_id <> owner_user_id),
   owners AS (
     SELECT u.id, coalesce(u.email,'No Email') email, coalesce(pr.full_name,u.raw_user_meta_data->>'full_name','No Name') name,
-      pr.role, pr.vendor_slug AS "vendorSlug", pr.tenant_id AS "tenantId", t.name AS "tenantName",
+      pr.role, pr.vendor_slug AS "vendorSlug", pr.tenant_id AS "tenantId", t.name AS "tenantName", t.domain AS "tenantDomain",
       u.created_at AS "createdAt", greatest(u.created_at,coalesce(u.email_confirmed_at,u.created_at),coalesce(s.start_date,u.created_at)) AS "registeredSortAt",
       CASE WHEN s.plan::text IN ('basic','plus','pro') AND s.duration::text IN ('monthly','quarterly','yearly','lifetime') THEN s.plan::text||'_'||s.duration::text ELSE coalesce(s.tier::text,'none') END tier,
       coalesce(s.status::text,'inactive') status,

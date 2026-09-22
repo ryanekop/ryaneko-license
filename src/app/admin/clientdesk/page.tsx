@@ -25,6 +25,7 @@ interface UserData {
     vendorSlug: string | null;
     tenantId: string | null;
     tenantName: string | null;
+    tenantDomain: string | null;
     createdAt: string;
     registeredSortAt: string;
     tier: string;
@@ -871,12 +872,13 @@ export default function ClientDeskPage() {
                                     <th className="px-4 py-3 font-medium">{t('clientdesk.colExpiry')}</th>
                                     <th className="px-4 py-3 font-medium">{t('clientdesk.colRegistered')}</th>
                                     <th className="px-4 py-3 font-medium">{t('clientdesk.colLastLogin')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('clientdesk.currentTenant')}</th>
                                     <th className="px-4 py-3 font-medium text-right">{t('clientdesk.colActions')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border-light">
                                 {loading ? Array.from({ length: 8 }).map((_, i) => (
-                                    <tr key={i}>{Array.from({ length: 9 }).map((__, cell) => <td key={cell} className="px-4 py-3"><div className="skeleton h-4 w-full max-w-28" /></td>)}</tr>
+                                    <tr key={i}>{Array.from({ length: 10 }).map((__, cell) => <td key={cell} className="px-4 py-3"><div className="skeleton h-4 w-full max-w-28" /></td>)}</tr>
                                 )) : sortedUsers.map((user, i) => (
                                     <Fragment key={user.id}>
                                     <tr className="row-animate text-fg hover:bg-bg-secondary/50 transition-colors" style={{ animationDelay: `${i * 0.02}s` }}>
@@ -905,6 +907,18 @@ export default function ClientDeskPage() {
                                                 </div>
                                             ) : (
                                                 <span className="text-fg-muted">—</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-sm">
+                                            {user.tenantName ? (
+                                                <div className="min-w-0">
+                                                    <div className="font-medium text-fg">{user.tenantName}</div>
+                                                    {user.tenantDomain && (
+                                                        <div className="max-w-48 truncate text-xs text-fg-muted" title={user.tenantDomain}>{user.tenantDomain}</div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-fg-muted">{t('clientdesk.noTenantAssigned')}</span>
                                             )}
                                         </td>
                                         <td className="px-4 py-2.5 text-right">
@@ -970,6 +984,21 @@ export default function ClientDeskPage() {
                                                     <span className="text-fg-muted">—</span>
                                                 )}
                                             </td>
+                                            <td className="px-4 py-2 text-sm">
+                                                {user.tenantName ? (
+                                                    <div className="min-w-0">
+                                                        <div className="font-medium text-fg-secondary">{user.tenantName}</div>
+                                                        {user.tenantDomain && (
+                                                            <div className="max-w-48 truncate text-xs text-fg-muted" title={user.tenantDomain}>{user.tenantDomain}</div>
+                                                        )}
+                                                        <div className="mt-1 text-[10px] font-medium text-indigo-600 dark:text-indigo-300">
+                                                            {t('clientdesk.followsOwnerTenant')}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-fg-muted">{t('clientdesk.noTenantAssigned')}</span>
+                                                )}
+                                            </td>
                                             <td className="px-4 py-2 text-right">
                                                 {member.id ? <button onClick={() => void openMfaReset({ id: member.id!, email: member.email, name: member.name })} className="px-2.5 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700"><ShieldIcon /> 2FA</button> : <span className="rounded-full bg-gray-500/10 px-2 py-1 text-[10px] font-semibold text-fg-muted">{t('clientdesk.readOnly')}</span>}
                                             </td>
@@ -1002,6 +1031,8 @@ export default function ClientDeskPage() {
                                         <p>{t('clientdesk.colExpiry')}: {isClientDeskLifetimeTier(user.tier, user.duration) ? <span className="text-amber-500">∞</span> : <span className={isExpired(user.expiresAt) ? 'text-danger' : ''}>{formatDate(user.expiresAt)}</span>}</p>
                                         <p>{t('clientdesk.colRegistered')}: {formatDate(user.createdAt)}</p>
                                         <p>{t('clientdesk.colLastLogin')}: {!user.emailConfirmed ? <span className="text-red-500 font-medium">⚠️ {t('clientdesk.unverified')}</span> : user.lastSignIn ? <span>{formatDateTime(user.lastSignIn)?.date} {formatDateTime(user.lastSignIn)?.time}</span> : '—'}</p>
+                                        <p>{t('clientdesk.currentTenant')}: {user.tenantName ? <span className="text-fg">{user.tenantName}</span> : <span>{t('clientdesk.noTenantAssigned')}</span>}</p>
+                                        {user.tenantDomain && <p className="truncate" title={user.tenantDomain}>{user.tenantDomain}</p>}
                                     </div>
                                     <div className="flex flex-wrap justify-end gap-1.5">
                                         <button onClick={() => void openMfaReset(user)} className="px-2.5 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium flex items-center gap-1"><ShieldIcon /> 2FA</button>
@@ -1048,6 +1079,11 @@ export default function ClientDeskPage() {
                                                 <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-fg-muted">
                                                     <span>{t('clientdesk.followsOwnerPlan')}</span>
                                                     <span>{t('clientdesk.readOnly')}</span>
+                                                </div>
+                                                <div className="mt-2 border-t border-border-light pt-2 text-[11px] text-fg-muted">
+                                                    <p>{t('clientdesk.currentTenant')}: {user.tenantName ? <span className="text-fg">{user.tenantName}</span> : <span>{t('clientdesk.noTenantAssigned')}</span>}</p>
+                                                    {user.tenantDomain && <p className="truncate" title={user.tenantDomain}>{user.tenantDomain}</p>}
+                                                    {user.tenantName && <p className="mt-0.5 font-medium text-indigo-600 dark:text-indigo-300">{t('clientdesk.followsOwnerTenant')}</p>}
                                                 </div>
                                             </div>
                                         ))}
@@ -1310,6 +1346,9 @@ export default function ClientDeskPage() {
                         <p className="text-sm font-medium text-fg mt-0.5">
                             {assignUser?.tenantName || t('clientdesk.noTenantAssigned')}
                         </p>
+                        {assignUser?.tenantDomain && (
+                            <p className="mt-0.5 truncate text-xs text-fg-muted" title={assignUser.tenantDomain}>{assignUser.tenantDomain}</p>
+                        )}
                     </div>
 
                     <div className="space-y-1.5">

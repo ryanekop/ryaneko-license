@@ -34,6 +34,15 @@ type ClientDeskSubscription = {
 type ClientDeskProfile = {
     id: string;
     full_name: string | null;
+    role: string | null;
+    vendor_slug: string | null;
+    tenant_id: string | null;
+};
+
+type ClientDeskTenant = {
+    id: string;
+    name: string;
+    domain: string | null;
 };
 
 type ClientDeskMemberView = {
@@ -134,9 +143,10 @@ export async function GET(request: NextRequest) {
         }
 
         // Get subscriptions, profiles, and workspace membership metadata.
-        const [{ data: subscriptions }, { data: profiles }, memberships] = await Promise.all([
+        const [{ data: subscriptions }, { data: profiles }, { data: tenants }, memberships] = await Promise.all([
             supabase.from('subscriptions').select('user_id, tier, status, start_date, end_date, trial_end_date, plan, duration'),
-            supabase.from('profiles').select('id, full_name'),
+            supabase.from('profiles').select('id, full_name, role, vendor_slug, tenant_id'),
+            supabase.from('tenants').select('id, name, domain'),
             listClientDeskWorkspaceMemberships(supabase),
         ]);
 
@@ -147,6 +157,10 @@ export async function GET(request: NextRequest) {
         const profileMap = new Map((profiles || []).map((p) => {
             const profile = p as ClientDeskProfile;
             return [profile.id, profile] as const;
+        }));
+        const tenantMap = new Map((tenants || []).map((t) => {
+            const tenant = t as ClientDeskTenant;
+            return [tenant.id, tenant] as const;
         }));
         const authMap = new Map(authUsers.map((user) => [user.id, user] as const));
         const memberMemberships = memberships.filter(isClientDeskWorkspaceMember);
@@ -161,6 +175,7 @@ export async function GET(request: NextRequest) {
             .map(user => {
             const subscription = subMap.get(user.id);
             const profile = profileMap.get(user.id);
+            const tenant = profile?.tenant_id ? tenantMap.get(profile.tenant_id) : null;
             const members: ClientDeskMemberView[] = memberMemberships
                 .filter((row) => row.owner_user_id === user.id)
                 .map((membership) => {
@@ -191,6 +206,11 @@ export async function GET(request: NextRequest) {
                 id: user.id,
                 email: user.email || 'No Email',
                 name: profile?.full_name || user.user_metadata?.full_name || 'No Name',
+                role: profile?.role || null,
+                vendorSlug: profile?.vendor_slug || null,
+                tenantId: profile?.tenant_id || null,
+                tenantName: tenant?.name || null,
+                tenantDomain: tenant?.domain || null,
                 createdAt: user.created_at,
                 registeredSortAt: getLatestDate(user.email_confirmed_at, subscription?.start_date, user.created_at) || user.created_at,
                 tier: subscription
