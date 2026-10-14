@@ -136,6 +136,20 @@ export async function listMayarPaymentRequests(cursor?: string) {
     return { items: body.data.map(normalizePaymentRequest), hasMore: body.hasMore === true, cursor: body.nextStartingAfter || null };
 }
 
+export type MayarProductTransaction = {
+    id: string; status: string; amount: number; createdAt: number; paymentLinkId: string;
+    customer?: { name?: string; email?: string };
+};
+
+export async function listMayarProductTransactions(productId: string, cursor?: string) {
+    const params = new URLSearchParams({ limit: '50' });
+    if (cursor) params.set('startingAfter', cursor);
+    // Settled payments no longer have status=paid. Filter successful states after retrieval.
+    const body = await mayarEnvelope<MayarProductTransaction[]>(`/products/${encodeURIComponent(productId)}/transactions?${params}`);
+    if (!Array.isArray(body.data)) throw new MayarApiError('Invalid product transaction response', 502);
+    return { items: body.data, hasMore: body.hasMore === true, cursor: body.nextStartingAfter || null };
+}
+
 export async function getMayarPaymentRequest(paymentId: string) {
     return normalizePaymentRequest(await mayarFetch<RawMayarPaymentRequest>(`/payments/${encodeURIComponent(paymentId)}`));
 }
