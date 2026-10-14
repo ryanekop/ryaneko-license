@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRateLimiter, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 import { getMayarTransaction } from '@/lib/mayar-v2';
 import { processVerifiedLegacyWebhook } from '@/app/api/mayar/webhook/route';
+import { processSoftwareStoreTransaction } from '@/lib/software-store';
 
 const limiter = createRateLimiter({ limit: 30, windowMs: 60_000 });
 const MAX_BODY_BYTES = 64 * 1024;
@@ -62,6 +63,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
             if (transaction.status.toLowerCase() !== 'paid') continue;
             if (email && transaction.customer?.email?.toLowerCase() !== email) continue;
             if (amount !== null && Number(transaction.amount) !== amount) continue;
+            try {
+                if (await processSoftwareStoreTransaction(transaction)) {
+                    return NextResponse.json({ success: true });
+                }
+            } catch {
+                // Retry store fulfillment after a temporary database/provider error; never route to the legacy allocator.
+                return NextResponse.json({ error: 'Payment processing unavailable' }, { status: 503 });
+            }
             const verifiedPayload = {
                 ...payload,
                 data: {

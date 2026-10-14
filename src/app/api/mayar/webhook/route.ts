@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin, supabaseAdmin } from '@/lib/supabase';
 import { getFastpikSupabase } from '@/lib/fastpik-supabase';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
 import { findClientDeskMemberByEmail } from '@/lib/clientdesk-workspace';
@@ -1712,49 +1712,26 @@ async function reserveLicenses(
     customerName: string,
     customerEmail: string,
     orderId: string,
-    customerInstagram?: string | null
-): Promise<License[]> {
-    const reservedLicenses: License[] = [];
-
-    // Find available licenses
-    const { data: availableLicenses, error } = await supabaseAdmin
-        .from('licenses')
-        .select('*')
-        .eq('product_id', productId)
-        .eq('status', 'available')
-        .is('customer_name', null)
-        .order('created_at', { ascending: true })
-        .limit(count);
-
-    if (error || !availableLicenses || availableLicenses.length === 0) {
-        return [];
-    }
-
-    // Reserve each license
-    for (let i = 0; i < Math.min(count, availableLicenses.length); i++) {
-        const license = availableLicenses[i];
-        const batchInfo = count > 1 ? `Batch ${i + 1}/${count}` : null;
-
-        const { data: updated, error: updateError } = await supabaseAdmin
-            .from('licenses')
-            .update({
-                customer_name: customerName,
-                customer_email: customerEmail,
-                customer_instagram: customerInstagram || null,
-                order_id: orderId,
-                batch_info: batchInfo,
-                updated_at: new Date().toISOString(),
-            })
-            .eq('id', license.id)
-            .select()
-            .single();
-
-        if (!updateError && updated) {
-            reservedLicenses.push(updated as License);
-        }
-    }
-
-    return reservedLicenses;
+    customerInstagram: string | null | undefined,
+    includesPlugin: boolean,
+    addons: unknown[],
+    payload: MayarWebhookPayload
+): Promise<{ licenses: License[]; newlyFulfilled: boolean }> {
+    const client = getSupabaseAdmin();
+    if (!client) throw new Error('Supabase Admin not configured');
+    const { data, error } = await client.rpc('fulfill_legacy_software_purchase', {
+        p_product_id: productId,
+        p_order_id: orderId,
+        p_count: count,
+        p_name: customerName,
+        p_email: customerEmail,
+        p_instagram: customerInstagram || null,
+        p_includes_plugin: includesPlugin,
+        p_addons: addons,
+        p_raw_payload: payload,
+    });
+    if (error) throw new Error('Atomic software fulfillment failed');
+    return { licenses: data.licenses as License[], newlyFulfilled: data.newly_fulfilled === true };
 }
 
 // Send license email via Resend
@@ -1837,14 +1814,18 @@ async function handleLicensePurchase(
     console.log(`Total Licenses Needed: ${totalLicenses}, Includes Plugin: ${includesPlugin || isBundle}`);
 
     // Reserve licenses
-    const reservedLicenses = await reserveLicenses(
+    const allocation = await reserveLicenses(
         product.id,
         totalLicenses,
         customerName,
         customerEmail!,
         orderData.id,
-        customerInstagram
+        customerInstagram,
+        includesPlugin || isBundle,
+        addons,
+        payload
     );
+    const reservedLicenses = allocation.licenses;
 
     console.log(`Reserved ${reservedLicenses.length}/${totalLicenses} licenses`);
 
@@ -1864,34 +1845,16 @@ async function handleLicensePurchase(
         return jsonResponse('Error', 'Out of stock - Admin notified', 500);
     }
 
-    // Record purchase
-    const { error: purchaseError } = await supabaseAdmin
-        .from('purchases')
-        .insert({
-            order_id: orderData.id,
-            product_id: product.id,
-            customer_name: customerName,
-            customer_email: customerEmail,
-            customer_instagram: customerInstagram,
-            license_count: totalLicenses,
-            includes_plugin: includesPlugin || isBundle,
-            addons: addons,
-            raw_payload: payload,
-            licenses_assigned: reservedLicenses.map(l => l.id),
-        });
-
-    if (purchaseError) {
-        console.error('Failed to record purchase:', purchaseError);
+    // Claim delivery separately so a failed email can retry without reallocating licenses.
+    const client = getSupabaseAdmin()!;
+    const { data: emailClaimed, error: claimError } = await client.rpc('claim_legacy_software_email', { p_order_id: orderData.id });
+    if (claimError) throw new Error('License email claim failed');
+    if (emailClaimed) {
+        const delivered = await sendLicenseEmail(customerEmail!, customerName, reservedLicenses, product, includesPlugin || isBundle);
+        const { error: deliveryError } = await client.from('purchases').update({ license_email_status: delivered ? 'sent' : 'failed' }).eq('order_id', orderData.id);
+        if (deliveryError) throw new Error('License email delivery status failed');
     }
-
-    // Send email
-    await sendLicenseEmail(
-        customerEmail!,
-        customerName,
-        reservedLicenses,
-        product,
-        includesPlugin || isBundle
-    );
+    if (!allocation.newlyFulfilled) return jsonResponse('Success', 'Purchase already fulfilled');
 
     // Telegram notification
     const serialList = reservedLicenses.map((l, i) => `  ${i + 1}. <code>${tg(l.serial_key)}</code>`).join('\n');

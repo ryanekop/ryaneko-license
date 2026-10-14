@@ -25,6 +25,11 @@ https://license.ryanekoapp.web.id/api/mayar/webhook/<MAYAR_WEBHOOK_SECRET>
 
 ## Getting Started
 
+RAW File Copy Tool checkout and email/OTP history setup:
+[software store rollout](docs/software-store-rollout.md). Apply its migration
+before deploying the updated software webhook. New checkout defaults to disabled
+until sandbox payment/redirect verification passes.
+
 First, run the development server:
 
 ```bash

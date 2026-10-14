@@ -32,7 +32,7 @@ const nextConfig: NextConfig = {
       {
         // CORS headers for license API — allow requests from any origin
         // (license software calls from desktop apps need this)
-        source: '/api/:path*',
+        source: '/api/((?!store(?:/|$)).*)',
         headers: [
           { key: 'Access-Control-Allow-Origin', value: '*' },
           { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, PATCH, DELETE, OPTIONS' },

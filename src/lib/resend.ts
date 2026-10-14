@@ -34,16 +34,16 @@ export async function sendEmail({ to, subject, html }: SendEmailParams): Promise
         const result = await response.json();
 
         if (!response.ok) {
-            console.error('[Resend] API error:', result);
+            console.error('[Resend] API error:', { status: response.status });
             return { success: false, error: result.message || 'Resend API error' };
         }
 
-        console.log(`[Resend] ✅ Email sent to ${to}, id: ${result.id}`);
+        console.log('[Resend] Email delivered');
         return { success: true, id: result.id };
 
     } catch (err: unknown) {
         const caughtError = err as { message?: string };
-        console.error('[Resend] Send error:', err);
+        console.error('[Resend] Send error:', { type: err instanceof Error ? err.name : 'Unknown' });
         return { success: false, error: caughtError.message };
     }
 }

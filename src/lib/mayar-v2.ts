@@ -5,6 +5,21 @@ type MayarEnvelope<T> = {
     messages?: string;
     message?: string;
     data?: T;
+    hasMore?: boolean;
+    nextStartingAfter?: string | null;
+};
+
+export type MayarPaymentRequest = {
+    id: string;
+    transactionId?: string;
+    amount?: number;
+    link?: string;
+    linkUrl?: string;
+    linkPayment?: string;
+    redirectUrl?: string | null;
+    status?: string;
+    extraData?: Record<string, unknown> | null;
+    transactions?: Array<{ id: string; extraData?: Record<string, unknown> | null }>;
 };
 
 export type MayarTransaction = {
@@ -53,7 +68,7 @@ export function getMayarConfig() {
     };
 }
 
-export async function mayarFetch<T>(path: string, init: RequestInit = {}) {
+async function mayarEnvelope<T>(path: string, init: RequestInit = {}, requireData = true) {
     const config = getMayarConfig();
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${config.apiKey}`);
@@ -72,14 +87,49 @@ export async function mayarFetch<T>(path: string, init: RequestInit = {}) {
         throw new MayarApiError(`Mayar returned HTTP ${response.status}`, response.status, response.headers.get('retry-after'));
     }
     const statusCode = body.statusCode ?? response.status;
-    if (!response.ok || statusCode >= 400 || !body.data) {
+    if (!response.ok || statusCode >= 400 || (requireData && !body.data)) {
         throw new MayarApiError(
             body.messages ?? body.message ?? `Mayar returned HTTP ${response.status}`,
             statusCode,
             response.headers.get('retry-after'),
         );
     }
-    return body.data;
+    return body as MayarEnvelope<T> & { data: T };
+}
+
+export async function mayarFetch<T>(path: string, init: RequestInit = {}) {
+    return (await mayarEnvelope<T>(path, init)).data;
+}
+
+export async function listMayarPaymentRequests(cursor?: string) {
+    const params = new URLSearchParams({ limit: '50' });
+    if (cursor) params.set('startingAfter', cursor);
+    const body = await mayarEnvelope<MayarPaymentRequest[]>(`/payments?${params}`);
+    return { items: body.data, hasMore: body.hasMore === true, cursor: body.nextStartingAfter || null };
+}
+
+export function getMayarPaymentRequest(paymentId: string) {
+    return mayarFetch<MayarPaymentRequest>(`/payments/${encodeURIComponent(paymentId)}`);
+}
+
+export async function closeMayarPaymentRequest(paymentId: string) {
+    const body = await mayarEnvelope<null>(`/payments/${encodeURIComponent(paymentId)}/close`, { method: 'POST' }, false);
+    if (body.messages !== 'success' && body.message !== 'success') {
+        throw new MayarApiError('Mayar did not close the payment request', 502);
+    }
+}
+
+export function extractPaymentCheckoutUrl(value: unknown, environment: MayarEnvironment): string | null {
+    if (typeof value !== 'string') return null;
+    try {
+        const url = new URL(value);
+        // Mayar's payment request examples use merchant myr.id links in both environments.
+        const validHost = isAllowedMayarCheckoutHost(url.hostname, environment) ||
+            (environment === 'sandbox' && url.hostname.endsWith('.myr.id'));
+        return url.protocol === 'https:' && validHost && !url.username && !url.password ? url.toString() : null;
+    } catch {
+        return null;
+    }
 }
 
 function isAllowedMayarCheckoutHost(hostname: string, environment: MayarEnvironment) {

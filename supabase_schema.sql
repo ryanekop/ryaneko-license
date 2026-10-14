@@ -167,7 +167,7 @@ ALTER TABLE universities ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role to do everything
 CREATE POLICY "Service role full access" ON products FOR ALL USING (true);
-CREATE POLICY "Service role full access" ON licenses FOR ALL USING (true);
-CREATE POLICY "Service role full access" ON purchases FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON licenses FOR ALL TO service_role USING (true);
+CREATE POLICY "Service role full access" ON purchases FOR ALL TO service_role USING (true);
 CREATE POLICY "Service role full access" ON activations FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON universities FOR ALL USING (true);
