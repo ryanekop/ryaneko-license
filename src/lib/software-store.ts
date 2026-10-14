@@ -13,9 +13,9 @@ export const SOFTWARE_PACKAGES = [
     { count: 1, price: 109000 }, { count: 2, price: 196000 }, { count: 3, price: 278000 },
 ] as const;
 export const SOFTWARE_OS_OPTIONS = [
-    'Mac OS Ventura (13.5+)', 'Mac OS Sonoma (14.6+)', 'Mac OS Sequoia (15.6+)',
-    'Mac OS Tahoe (26.0+)', 'Windows 7', 'Windows 8/8.1', 'Windows 10', 'Windows 11',
-    'Android', 'Mac OS Monterey (12.4+)', 'Mac OS Golden Gate (27.0+)',
+    'Mac OS Monterey (12.4+)', 'Mac OS Ventura (13.5+)', 'Mac OS Sonoma (14.6+)',
+    'Mac OS Sequoia (15.6+)', 'Mac OS Tahoe (26.0+)', 'Mac OS Golden Gate (27.0+)',
+    'Windows 7', 'Windows 8/8.1', 'Windows 10', 'Windows 11', 'Android',
 ];
 export const SOFTWARE_SOURCES = ['Instagram', 'Teman/Kerabat', 'Website', 'Tiktok', 'Google Search', 'Lainnya'];
 const PRODUCT_NAME = 'RAW File Copy Tool' as const;
@@ -46,6 +46,31 @@ type LegacyPurchase = {
     id: string; order_id: string; product_id: string; customer_email: string; license_count: number;
     licenses_assigned: string[]; created_at: string; raw_payload: Record<string, unknown> | null;
 };
+
+export function softwarePurchaseNotification(
+    order: Pick<SoftwareOrder, 'id' | 'customer_name' | 'customer_email' | 'customer_mobile' |
+        'customer_instagram' | 'os' | 'source' | 'amount' | 'license_count'>,
+    transactionId: string, serials: string[],
+) {
+    const escape = escapeTelegramHtml;
+    const amount = new Intl.NumberFormat('id-ID').format(order.amount);
+    return [
+        '<b>New Purchase! v2</b>', '',
+        `📦 ${escape(PRODUCT_NAME)}`,
+        `👤 Nama: ${escape(order.customer_name)}`,
+        `📧 Email: ${escape(order.customer_email)}`,
+        `📱 WhatsApp: ${escape(order.customer_mobile)}`,
+        `📸 Instagram: ${escape(order.customer_instagram)}`,
+        `💻 OS: ${escape(order.os)}`,
+        `🧭 Sumber: ${escape(order.source)}`,
+        `💰 Nominal: Rp ${escape(amount)}`,
+        `🔢 Jumlah lisensi: ${escape(order.license_count)}`,
+        `🧾 Pesanan: ${escape(order.id)}`,
+        `🔑 Transaction: ${escape(transactionId)}`,
+        '🔐 Serial number:',
+        ...serials.map(serial => `<code>${escape(serial)}</code>`),
+    ].join('\n');
+}
 
 export class SoftwareStoreError extends Error {
     readonly code: string;
@@ -264,7 +289,10 @@ async function fulfill(order: SoftwareOrder, attempt: PaymentAttempt, transactio
     if (result.order.status === 'awaiting_stock' && order.status !== 'awaiting_stock') {
         await notifyAlert(`<b>Stok serial kurang</b>\nProduk: ${PRODUCT_NAME}\nPesanan: ${order.id}\nJumlah diperlukan: ${order.license_count}`);
     }
-    if (result.newly_fulfilled) await notifyPurchase(`<b>Pembelian web selesai</b>\nProduk: ${PRODUCT_NAME}\nPesanan: ${order.id}\nJumlah lisensi: ${order.license_count}`);
+    if (result.newly_fulfilled) {
+        const receipt = await orderReceipt(result.order);
+        await notifyPurchase(softwarePurchaseNotification(result.order, transaction.id, receipt.serials));
+    }
     // Email errors must not roll back fulfillment or deny the receipt.
     try { await deliverOrder(result.order); } catch { /* A later receipt/webhook retries email delivery. */ }
 }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
     hashStoreToken, normalizeStoreEmail, SOFTWARE_OS_OPTIONS, SOFTWARE_PACKAGES, SOFTWARE_SOURCES,
-    softwareDownloads, softwareRedirectMatches, softwareTransactionMatches, validateSoftwareCheckout, validStoreToken,
+    softwareDownloads, softwarePurchaseNotification, softwareRedirectMatches, softwareTransactionMatches, validateSoftwareCheckout, validStoreToken,
 } from './software-store.ts';
 import { extractPaymentCheckoutUrl, type MayarTransaction } from './mayar-v2.ts';
 
@@ -10,6 +10,29 @@ const customer = {
     name: '  Budi Santoso  ', email: '  BUDI@example.com  ', mobile: '+628123456789',
     instagram: '@budi.photo', os: 'Windows 11', source: 'Website',
 };
+
+test('OS catalog groups oldest-to-newest Mac, Windows, then Android without changing labels', () => {
+    assert.deepEqual(SOFTWARE_OS_OPTIONS, [
+        'Mac OS Monterey (12.4+)', 'Mac OS Ventura (13.5+)', 'Mac OS Sonoma (14.6+)',
+        'Mac OS Sequoia (15.6+)', 'Mac OS Tahoe (26.0+)', 'Mac OS Golden Gate (27.0+)',
+        'Windows 7', 'Windows 8/8.1', 'Windows 10', 'Windows 11', 'Android',
+    ]);
+});
+
+test('v2 purchase notification includes committed purchase details and escapes dynamic HTML', () => {
+    const message = softwarePurchaseNotification({
+        id: 'order<&>', customer_name: 'Buyer <b>&"\'', customer_email: 'buyer&photo@example.test',
+        customer_mobile: '+628123456789', customer_instagram: '<instagram>', os: 'Windows <11>',
+        source: 'Friends & family', amount: 196000, license_count: 2,
+    }, 'transaction<&>', ['SERIAL<1>', 'SERIAL&2']);
+    for (const content of [
+        '<b>New Purchase! v2</b>', 'RAW File Copy Tool', 'Buyer &lt;b&gt;&amp;&quot;&#39;',
+        'buyer&amp;photo@example.test', '+628123456789', '&lt;instagram&gt;', 'Windows &lt;11&gt;',
+        'Friends &amp; family', 'Rp 196.000', 'Jumlah lisensi: 2', 'order&lt;&amp;&gt;',
+        'transaction&lt;&amp;&gt;', '<code>SERIAL&lt;1&gt;</code>', '<code>SERIAL&amp;2</code>',
+    ]) assert.ok(message.includes(content), content);
+    assert.ok(!message.includes('Buyer <b>'));
+});
 
 test('software packages use canonical pricing and normalized buyer fields', () => {
     for (const selection of SOFTWARE_PACKAGES) {

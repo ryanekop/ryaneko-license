@@ -14,13 +14,14 @@ process.env.RESEND_API_KEY = 'isolated-test-key';
 process.env.SOFTWARE_STORE_ENABLED = 'true';
 process.env.SOFTWARE_STORE_SECRET = 'isolated-test-secret';
 process.env.SOFTWARE_STORE_WEB_URL = 'https://ryanekoapp.web.id';
-delete process.env.TELEGRAM_BOT_TOKEN;
-delete process.env.TELEGRAM_CHAT_ID;
+process.env.TELEGRAM_BOT_TOKEN = 'isolated-test-bot';
+process.env.TELEGRAM_CHAT_ID = 'isolated-test-chat';
 const { PGlite } = await import(pathToFileURL(process.argv[2]).href);
 const db = new PGlite();
 const payments = new Map();
 const transactions = new Map();
 const mails = [];
+const telegramMessages = [];
 let creates = 0;
 let mailFails = false;
 let createMode = 'normal';
@@ -87,6 +88,14 @@ globalThis.fetch = async (input, init = {}) => {
         const mail = JSON.parse(init.body); mails.push(mail);
         return mailFails ? json({ message: 'test mail failure' }, 503) : json({ id: randomUUID() });
     }
+    if (url.hostname === 'api.telegram.org') {
+        assert.equal(url.pathname, '/botisolated-test-bot/sendMessage');
+        const message = JSON.parse(init.body);
+        assert.equal(message.chat_id, 'isolated-test-chat');
+        assert.equal(message.parse_mode, 'HTML');
+        telegramMessages.push(message.text);
+        return json({ ok: true });
+    }
     assert.equal(url.hostname, 'provider.test', 'Unexpected network request blocked');
     if (url.pathname.endsWith('/payments/create')) {
         creates++;
@@ -121,7 +130,7 @@ try {
     await db.exec(await readFile(new URL('../migration/add-software-store.sql', import.meta.url), 'utf8'));
     const store = await import('../src/lib/software-store.ts');
     const mayar = await import('../src/lib/mayar-v2.ts');
-    const buyer = { name: 'Buyer', email: 'buyer@example.test', mobile: '081234567890', instagram: 'buyer', os: 'Windows 11', source: 'Website' };
+    const buyer = { name: 'Buyer <Photo> & Friends', email: 'buyer@example.test', mobile: '081234567890', instagram: 'buyer', os: 'Windows 11', source: 'Website' };
     const token = () => randomBytes(32).toString('base64url');
     const access = token();
     const checkout = await store.createSoftwareCheckout(buyer, 2, access);
@@ -139,12 +148,23 @@ try {
     assert.equal(await store.processSoftwareStoreTransaction(await mayar.getMayarTransaction(transaction.id)), true);
     const fulfilled = await store.getSoftwareReceipt(checkout.orderId, access, false);
     assert.equal(fulfilled.status, 'fulfilled'); assert.equal(fulfilled.serials.length, 2);
+    const purchaseMessages = () => telegramMessages.filter(message => message.includes('<b>New Purchase! v2</b>'));
+    assert.equal(purchaseMessages().length, 1);
+    for (const content of [
+        'RAW File Copy Tool', 'Buyer &lt;Photo&gt; &amp; Friends', buyer.email, buyer.mobile,
+        `Instagram: ${buyer.instagram}`, `OS: ${buyer.os}`, `Sumber: ${buyer.source}`,
+        'Rp 196.000', 'Jumlah lisensi: 2', checkout.orderId, transaction.id,
+        ...fulfilled.serials.map(serial => `<code>${serial}</code>`),
+    ]) assert.ok(purchaseMessages()[0].includes(content), content);
+    assert.ok(!purchaseMessages()[0].includes('Buyer <Photo>'));
     assert.equal((await db.query('SELECT email_status FROM software_orders WHERE id=$1', [checkout.orderId])).rows[0].email_status, 'failed');
     mailFails = false;
     await db.query("UPDATE software_orders SET email_claimed_at=now()-interval '61 seconds' WHERE id=$1", [checkout.orderId]);
     await store.processSoftwareStoreTransaction(await mayar.getMayarTransaction(transaction.id));
     assert.equal((await db.query('SELECT email_status FROM software_orders WHERE id=$1', [checkout.orderId])).rows[0].email_status, 'sent');
     assert.equal((await db.query('SELECT count(*)::int AS count FROM licenses WHERE order_id=$1',[transaction.id])).rows[0].count, 2);
+    await store.getSoftwareReceipt(checkout.orderId, access, true);
+    assert.equal(purchaseMessages().length, 1, 'duplicate webhook/email retry/receipt refresh must not resend purchase notification');
     console.log('PASS: verified fulfillment, duplicate webhook, failed email then retry without new serials');
     const duplicateId = randomUUID(), duplicateTxn = randomUUID();
     await db.query('INSERT INTO software_payment_attempts(id,order_id,transaction_id,status,expires_at) VALUES ($1,$2,$3,\'pending\',now()+interval \'1 day\')', [duplicateId, checkout.orderId, duplicateTxn]);
@@ -153,6 +173,7 @@ try {
     assert.equal(await store.processSoftwareStoreTransaction(await mayar.getMayarTransaction(duplicateTxn)), true);
     assert.equal((await db.query('SELECT count(*)::int AS count FROM licenses WHERE order_id=$1',[duplicateTxn])).rows[0].count, 0);
     assert.ok((await db.query('SELECT duplicate_payment_notified_at FROM software_orders WHERE id=$1',[checkout.orderId])).rows[0].duplicate_payment_notified_at);
+    assert.equal(purchaseMessages().length, 1, 'second payment must not emit another fulfilled purchase notification');
     console.log('PASS: second paid attempt is flagged for review without additional serial allocation');
 
     await store.requestSoftwareOtp(buyer.email, 'test-ip');
@@ -203,9 +224,11 @@ try {
     await db.query('UPDATE software_orders SET last_verified_at=NULL WHERE id=$1', [recheck.orderId]);
     const rechecked = await store.getSoftwareReceipt(recheck.orderId, recheckAccess, true);
     assert.equal(rechecked.status, 'fulfilled'); assert.equal(rechecked.serials.length, 1);
+    const notificationCount = purchaseMessages().length;
     const deliveredCount = mails.length;
     assert.deepEqual((await store.getSoftwareReceipt(recheck.orderId, recheckAccess, true)).serials, rechecked.serials);
     assert.equal(mails.length, deliveredCount);
+    assert.equal(purchaseMessages().length, notificationCount);
     console.log('PASS: receipt refresh recovers paid order, rejects invalid metadata, and remains idempotent');
 
     createMode = 'bad-redirect';
