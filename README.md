@@ -23,6 +23,16 @@ Register the Mayar webhook using the protected path (not `/api/mayar/webhook`):
 https://license.ryanekoapp.web.id/api/mayar/webhook/<MAYAR_WEBHOOK_SECRET>
 ```
 
+## Generic Windows fallback notifications
+
+Apply `migration/add-generic-fallback-alert-claim.sql` to the license Supabase
+database before deploying this change. Fallback alerts share a single atomic
+claim per license across activation and verification. Existing licenses start
+unclaimed. Device resets preserve the claim, and failed Telegram sends are not
+retried automatically. Every fallback still writes its audit log and retains
+the original device binding. If claiming fails (including a missing migration),
+the server logs an error and skips the notification without rejecting the license.
+
 ## Getting Started
 
 RAW File Copy Tool checkout and email/OTP history setup:

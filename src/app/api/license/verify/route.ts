@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { generateDeviceHash } from '@/lib/crypto';
 import { GENERIC_WINDOWS_ID, isWindowsDeviceType, resolveDeviceBinding } from '@/lib/device-binding';
 import { escapeTelegramHtml, notifyAlert } from '@/lib/telegram';
+import { notifyGenericFallbackOnce } from '@/lib/generic-fallback-alert';
 import { createRateLimiter, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 import type { VerifyRequest, VerifyResponse, License } from '@/lib/types';
 
@@ -165,7 +166,8 @@ export async function POST(request: NextRequest) {
                 `Generic Windows fallback accepted; retained binding: ${licenseData.device_id}`
             );
 
-            await notifyAlert(
+            await notifyGenericFallbackOnce(
+                licenseData.id,
                 `<b>⚠️ GENERIC WINDOWS FALLBACK ACCEPTED</b>\n\n` +
                 `⚙️ Action: verify\n` +
                 `🔑 Serial: <code>${tg(serial_key)}</code>\n` +

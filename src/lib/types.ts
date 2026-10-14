@@ -47,6 +47,7 @@ export interface License {
     device_hash?: string;
     activated_at?: string;
     last_active_at?: string;
+    generic_fallback_alert_claimed_at?: string | null;
     reset_count: number;
 
     batch_info?: string;
