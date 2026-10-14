@@ -4,6 +4,7 @@ import { useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useTheme, useLang } from '@/lib/providers';
 import { AnimatedPopover } from '@/components/AdminModal';
+import { AdminPasswordGate } from '@/components/AdminPasswordGate';
 
 // --- ICONS ---
 const SunIcon = () => (
@@ -151,6 +152,11 @@ const EXTERNAL_LINKS = [
 ];
 
 export default function PanelPage() {
+    const { t } = useLang();
+    return <AdminPasswordGate title={t('panel.title')}>{({ logout, isLoggingOut, logoutError }) => <PanelContent logout={logout} isLoggingOut={isLoggingOut} logoutError={logoutError} />}</AdminPasswordGate>;
+}
+
+function PanelContent({ logout, isLoggingOut, logoutError }: { logout: () => Promise<void>; isLoggingOut: boolean; logoutError: string }) {
     const { theme, toggleTheme } = useTheme();
     const { lang, toggleLang, t } = useLang();
     const [navOpen, setNavOpen] = useState(false);
@@ -202,6 +208,7 @@ export default function PanelPage() {
                             </AnimatedPopover>
                         </div>
                         <div className="flex items-center gap-2">
+                            {logoutError && <span role="alert" className="text-xs text-danger">{logoutError}</span>}
                             <button
                                 onClick={toggleLang}
                                 className="h-8 px-2.5 rounded-lg border border-border text-fg-secondary text-xs font-semibold cursor-pointer hover:bg-bg-secondary hover:text-fg transition-all active:scale-95"
@@ -214,6 +221,7 @@ export default function PanelPage() {
                             >
                                 {theme === 'light' ? <MoonIcon /> : <SunIcon />}
                             </button>
+                            <button onClick={() => void logout()} disabled={isLoggingOut} className="h-8 px-3 text-xs text-danger border border-border rounded-lg cursor-pointer hover:bg-danger/10 disabled:opacity-50">{t('header.logout')}</button>
                         </div>
                     </div>
                 </div>

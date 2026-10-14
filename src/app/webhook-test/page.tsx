@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useTheme, useLang } from '@/lib/providers';
+import { useAdminSession } from '@/components/useAdminSession';
 
 const PRESETS = [
     {
@@ -441,12 +442,11 @@ export default function WebhookTestPage() {
     const { theme, toggleTheme } = useTheme();
     const { lang, toggleLang, t } = useLang();
 
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const { isAuthenticated, setIsAuthenticated, authChecking, login, logout, isLoggingOut, logoutError } = useAdminSession();
     const [password, setPassword] = useState('');
     const [loginError, setLoginError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [loginLoading, setLoginLoading] = useState(false);
-    const [authChecking, setAuthChecking] = useState(true);
     const [remember, setRemember] = useState(false);
 
     const [jsonInput, setJsonInput] = useState(JSON.stringify(PRESETS[0].payload, null, 2));
@@ -456,29 +456,13 @@ export default function WebhookTestPage() {
     const [copied, setCopied] = useState(false);
     const [navOpen, setNavOpen] = useState(false);
 
-    useEffect(() => {
-        const controller = new AbortController();
-        fetch('/api/admin/auth', { signal: controller.signal, cache: 'no-store' })
-            .then((res) => res.ok ? res.json() : { authenticated: false })
-            .then((data: { authenticated?: boolean }) => setIsAuthenticated(data.authenticated === true))
-            .catch(() => undefined)
-            .finally(() => setAuthChecking(false));
-        return () => controller.abort();
-    }, []);
-
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoginError('');
         setLoginLoading(true);
         await new Promise(resolve => setTimeout(resolve, 800));
         try {
-            const res = await fetch('/api/admin/auth', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password, remember }),
-            });
-            if (res.ok) {
-                setIsAuthenticated(true);
+            if (await login(password, remember)) {
                 setPassword('');
             } else {
                 setLoginError(t('login.error'));
@@ -614,6 +598,8 @@ export default function WebhookTestPage() {
             });
 
             const result = await res.json();
+
+            if (res.status === 401) setIsAuthenticated(false);
 
             if (res.ok) {
                 addLog('success', `${res.status} — ${result.message || result.status}`, JSON.stringify(result, null, 2));
@@ -765,6 +751,8 @@ export default function WebhookTestPage() {
                         </>
                     )}
                 </div>
+                {logoutError && <span role="alert" className="text-xs text-danger">{logoutError}</span>}
+                <button onClick={() => void logout()} disabled={isLoggingOut || sending} className="h-8 px-3 text-xs text-danger border border-border rounded-lg cursor-pointer hover:bg-danger/10 disabled:opacity-50">{t('header.logout')}</button>
                 <div className="webhook-live-badge" style={{
                     fontSize: '11px',
                     padding: '4px 10px',

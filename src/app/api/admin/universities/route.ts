@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClientDeskSupabase } from '@/lib/clientdesk-supabase';
 import { createPagination } from '@/lib/pagination';
+import { canonicalizeUniversityName, universityNameKeys, universitySearchVariants } from '@/lib/university-names';
 
 const TABLE_CANDIDATES = ['university_references', 'univeristy_references'] as const;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
@@ -8,8 +9,7 @@ const DEFAULT_PAGE_SIZE = 25;
 let cachedTableName: string | null = null;
 
 function normalizeName(value: unknown): string {
-    if (typeof value !== 'string') return '';
-    return value.trim();
+    return canonicalizeUniversityName(value);
 }
 
 function normalizeNameKey(value: string): string {
@@ -53,8 +53,8 @@ function escapeIlikePattern(value: string): string {
 function applySearchFilter<T extends { or: (filters: string) => T }>(query: T, keyword: string) {
     const q = keyword.trim();
     if (!q) return query;
-    const escaped = escapeIlikePattern(q);
-    return query.or(`name.ilike.%${escaped}%,abbreviation.ilike.%${escaped}%`);
+    const nameFilters = universitySearchVariants(q).map((variant) => `name.ilike.${JSON.stringify(`%${escapeIlikePattern(variant)}%`)}`);
+    return query.or([...nameFilters, `abbreviation.ilike.${JSON.stringify(`%${escapeIlikePattern(q)}%`)}`].join(','));
 }
 
 async function resolveUniversityTableName() {
@@ -137,16 +137,20 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'name and abbreviation are required' }, { status: 400 });
         }
 
-        const { data: existingByName, error: existingByNameError } = await supabase
+        const { data: existingNames, error: existingByNameError } = await supabase
             .from(tableName)
             .select('*')
-            .eq('normalized_name', normalizedName)
-            .limit(1)
-            .maybeSingle();
+            .in('normalized_name', universityNameKeys(typeof body?.name === 'string' ? body.name : name))
+            .limit(2);
 
         if (existingByNameError) {
             return NextResponse.json({ error: existingByNameError.message }, { status: 500 });
         }
+
+        if (existingNames && existingNames.length > 1) {
+            return NextResponse.json({ error: 'multiple equivalent names already exist' }, { status: 409 });
+        }
+        const existingByName = existingNames?.[0];
 
         if (existingByName) {
             const existingAbbreviation = normalizeAbbreviation(existingByName.abbreviation);
@@ -218,6 +222,20 @@ export async function PUT(request: NextRequest) {
 
         if (!id || !name || !abbreviation) {
             return NextResponse.json({ error: 'id, name, and abbreviation are required' }, { status: 400 });
+        }
+
+        const { data: existingNames, error: existingNamesError } = await supabase
+            .from(tableName)
+            .select('id')
+            .in('normalized_name', universityNameKeys(typeof body?.name === 'string' ? body.name : name))
+            .neq('id', id)
+            .limit(1);
+
+        if (existingNamesError) {
+            return NextResponse.json({ error: existingNamesError.message }, { status: 500 });
+        }
+        if (existingNames?.length) {
+            return NextResponse.json({ error: 'name already exists' }, { status: 409 });
         }
 
         const { data, error } = await supabase
