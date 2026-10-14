@@ -32,6 +32,34 @@ export type MayarTransaction = {
     customer?: { email?: string; name?: string; mobile?: string };
 };
 
+type RawMayarTransaction = Omit<MayarTransaction, 'extraData'> & { extraData?: unknown };
+type RawMayarPaymentRequest = Omit<MayarPaymentRequest, 'extraData' | 'transactions'> & {
+    extraData?: unknown;
+    transactions?: Array<{ id: string; extraData?: unknown }>;
+};
+
+// Production can serialize this field as JSON text instead of returning an object.
+// Invalid metadata stays unusable for payment identity checks.
+export function normalizeMayarExtraData(value: unknown): Record<string, unknown> | null {
+    if (typeof value === 'string') {
+        try { value = JSON.parse(value); }
+        catch { return null; }
+    }
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : null;
+}
+
+function normalizePaymentRequest(payment: RawMayarPaymentRequest): MayarPaymentRequest {
+    return {
+        ...payment,
+        extraData: normalizeMayarExtraData(payment.extraData),
+        transactions: payment.transactions?.map(transaction => ({
+            ...transaction, extraData: normalizeMayarExtraData(transaction.extraData),
+        })),
+    };
+}
+
 export type ImmutableCheckoutResponse = {
     checkoutLink: string;
 };
@@ -104,12 +132,12 @@ export async function mayarFetch<T>(path: string, init: RequestInit = {}) {
 export async function listMayarPaymentRequests(cursor?: string) {
     const params = new URLSearchParams({ limit: '50' });
     if (cursor) params.set('startingAfter', cursor);
-    const body = await mayarEnvelope<MayarPaymentRequest[]>(`/payments?${params}`);
-    return { items: body.data, hasMore: body.hasMore === true, cursor: body.nextStartingAfter || null };
+    const body = await mayarEnvelope<RawMayarPaymentRequest[]>(`/payments?${params}`);
+    return { items: body.data.map(normalizePaymentRequest), hasMore: body.hasMore === true, cursor: body.nextStartingAfter || null };
 }
 
-export function getMayarPaymentRequest(paymentId: string) {
-    return mayarFetch<MayarPaymentRequest>(`/payments/${encodeURIComponent(paymentId)}`);
+export async function getMayarPaymentRequest(paymentId: string) {
+    return normalizePaymentRequest(await mayarFetch<RawMayarPaymentRequest>(`/payments/${encodeURIComponent(paymentId)}`));
 }
 
 export async function closeMayarPaymentRequest(paymentId: string) {
@@ -195,8 +223,9 @@ export function describeResponseShape(value: unknown) {
     return { type: typeof value };
 }
 
-export function getMayarTransaction(transactionId: string) {
-    return mayarFetch<MayarTransaction>(`/transactions/${encodeURIComponent(transactionId)}`);
+export async function getMayarTransaction(transactionId: string): Promise<MayarTransaction> {
+    const transaction = await mayarFetch<RawMayarTransaction>(`/transactions/${encodeURIComponent(transactionId)}`);
+    return { ...transaction, extraData: normalizeMayarExtraData(transaction.extraData) };
 }
 
 export async function generateImmutableCheckout(input: {

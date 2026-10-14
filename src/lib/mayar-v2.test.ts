@@ -1,6 +1,82 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { extractImmutableCheckoutUrl, generateImmutableCheckout } from './mayar-v2.ts';
+import {
+    extractImmutableCheckoutUrl, generateImmutableCheckout, getMayarPaymentRequest,
+    getMayarTransaction, listMayarPaymentRequests, normalizeMayarExtraData,
+} from './mayar-v2.ts';
+import { softwareTransactionMatches } from './software-store.ts';
+
+const orderMetadata = { software_order_id: 'order-1', software_attempt_id: 'attempt-1' };
+// Synthetic fixture with the same metadata representation observed in production.
+const productionTransaction = {
+    id: 'transaction-1', amount: 109000, status: 'paid',
+    customer: { email: 'buyer@example.test' }, extraData: JSON.stringify(orderMetadata),
+};
+
+test('normalizes object and JSON-text metadata without accepting invalid values', () => {
+    assert.equal(normalizeMayarExtraData(orderMetadata), orderMetadata);
+    assert.deepEqual(normalizeMayarExtraData(JSON.stringify(orderMetadata)), orderMetadata);
+    for (const value of [undefined, null, '', '{broken', [], '[]', 'null', 'true', '123', '"text"', 123, true]) {
+        assert.equal(normalizeMayarExtraData(value), null);
+    }
+});
+
+test('normalizes metadata at transaction, payment detail and paginated list boundaries', async () => {
+    const previousFetch = globalThis.fetch;
+    const keys = ['MAYAR_API_KEY', 'MAYAR_ENV', 'MAYAR_V2_API_BASE_URL'] as const;
+    const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+    process.env.MAYAR_API_KEY = 'test-key';
+    process.env.MAYAR_ENV = 'production';
+    process.env.MAYAR_V2_API_BASE_URL = 'https://provider.example.test/hl/v2';
+    const payment = {
+        id: 'payment-1', status: 'paid', extraData: JSON.stringify(orderMetadata),
+        transactions: [{ id: 'transaction-1', extraData: productionTransaction.extraData }],
+    };
+    const urls: string[] = [];
+    globalThis.fetch = async input => {
+        const url = new URL(String(input));
+        urls.push(url.pathname + url.search);
+        const data = url.pathname.includes('/transactions/') ? productionTransaction :
+            url.pathname.endsWith('/payments') ? [payment, { id: 'payment-2', extraData: null, transactions: [] }] : payment;
+        return new Response(JSON.stringify({ statusCode: 200, data, hasMore: true, nextStartingAfter: 'next-page' }), {
+            headers: { 'content-type': 'application/json' },
+        });
+    };
+    try {
+        const transaction = await getMayarTransaction('transaction-1');
+        assert.deepEqual(transaction.extraData, orderMetadata);
+        assert.equal(transaction.status, 'paid');
+        assert.deepEqual(transaction.customer, productionTransaction.customer);
+        const order = { id: 'order-1', amount: 109000, customer_email: 'buyer@example.test' };
+        const attempt = { id: 'attempt-1', transaction_id: 'transaction-1' };
+        assert.equal(softwareTransactionMatches(order, attempt, transaction), true);
+        for (const patch of [
+            { status: 'unpaid' }, { amount: 1 }, { id: 'other-transaction' },
+            { customer: { email: 'other@example.test' } },
+            { extraData: { ...orderMetadata, software_order_id: 'other-order' } },
+            { extraData: { ...orderMetadata, software_attempt_id: 'other-attempt' } },
+            { extraData: null },
+        ]) assert.equal(softwareTransactionMatches(order, attempt, { ...transaction, ...patch }), false);
+        const detail = await getMayarPaymentRequest('payment-1');
+        assert.deepEqual(detail.extraData, orderMetadata);
+        assert.deepEqual(detail.transactions?.[0].extraData, orderMetadata);
+        const page = await listMayarPaymentRequests('previous-page');
+        assert.deepEqual(page.items[0].transactions?.[0].extraData, orderMetadata);
+        assert.deepEqual(page.items[0].extraData, orderMetadata);
+        assert.equal(page.items[1].extraData, null);
+        assert.deepEqual(page.items[1].transactions, []);
+        assert.equal(page.hasMore, true);
+        assert.equal(page.cursor, 'next-page');
+        assert.ok(urls.includes('/hl/v2/payments?limit=50&startingAfter=previous-page'));
+        assert.equal(typeof productionTransaction.extraData, 'string');
+    } finally {
+        globalThis.fetch = previousFetch;
+        for (const key of keys) {
+            if (previous[key] === undefined) delete process.env[key];
+            else process.env[key] = previous[key];
+        }
+    }
+});
 
 test('normalizes documented and production wrapper checkout responses', () => {
     const url = 'https://web.mayar.id/pl/checkout?immutable=signed';

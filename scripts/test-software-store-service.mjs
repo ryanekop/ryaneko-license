@@ -24,6 +24,14 @@ const mails = [];
 let creates = 0;
 let mailFails = false;
 let createMode = 'normal';
+const metadataFormat = process.argv[3] || 'json-text';
+assert.ok(['object', 'json-text'].includes(metadataFormat));
+const metadata = value => metadataFormat === 'json-text' && value !== null && typeof value === 'object' ? JSON.stringify(value) : value;
+const providerTransaction = transaction => ({ ...transaction, extraData: metadata(transaction.extraData) });
+const providerPayment = payment => ({
+    ...payment, extraData: metadata(payment.extraData),
+    transactions: payment.transactions.map(transaction => ({ id: transaction.id, extraData: metadata(transaction.extraData) })),
+});
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 const ident = value => { assert.match(value, /^[a-z_][a-z0-9_]*$/); return `"${value}"`; };
 
@@ -90,9 +98,9 @@ globalThis.fetch = async (input, init = {}) => {
         if (createMode === 'timeout') throw new Error('Simulated provider timeout after committed create');
         return json({ statusCode: 200, data: payment });
     }
-    if (url.pathname.endsWith('/payments')) return json({ statusCode: 200, data: [...payments.values()], hasMore: false });
+    if (url.pathname.endsWith('/payments')) return json({ statusCode: 200, data: [...payments.values()].map(providerPayment), hasMore: false });
     const segments = url.pathname.split('/');
-    if (segments.at(-2) === 'transactions') return json({ statusCode: 200, data: transactions.get(segments.at(-1)) });
+    if (segments.at(-2) === 'transactions') return json({ statusCode: 200, data: providerTransaction(transactions.get(segments.at(-1))) });
     const id = segments.at(-1) === 'close' ? segments.at(-2) : segments.at(-1);
     const payment = payments.get(id);
     assert.ok(payment, 'Unknown test payment');
@@ -100,7 +108,7 @@ globalThis.fetch = async (input, init = {}) => {
         payment.status = 'closed'; transactions.get(payment.transactionId).status = 'closed';
         return json({ statusCode: 200, messages: 'success' });
     }
-    return json({ statusCode: 200, data: payment });
+    return json({ statusCode: 200, data: providerPayment(payment) });
 };
 
 try {
@@ -112,6 +120,7 @@ try {
         INSERT INTO licenses(product_id,serial_key) SELECT '00000000-0000-0000-0000-000000000001','SERIAL-'||n FROM generate_series(1,20)n;`);
     await db.exec(await readFile(new URL('../migration/add-software-store.sql', import.meta.url), 'utf8'));
     const store = await import('../src/lib/software-store.ts');
+    const mayar = await import('../src/lib/mayar-v2.ts');
     const buyer = { name: 'Buyer', email: 'buyer@example.test', mobile: '081234567890', instagram: 'buyer', os: 'Windows 11', source: 'Website' };
     const token = () => randomBytes(32).toString('base64url');
     const access = token();
@@ -126,20 +135,22 @@ try {
     const payment = [...payments.values()][0];
     const transaction = transactions.get(payment.transactionId);
     transaction.status = 'paid'; mailFails = true;
-    assert.equal(await store.processSoftwareStoreTransaction(transaction), true);
+    // Same transaction-read boundary used by the verified webhook.
+    assert.equal(await store.processSoftwareStoreTransaction(await mayar.getMayarTransaction(transaction.id)), true);
     const fulfilled = await store.getSoftwareReceipt(checkout.orderId, access, false);
     assert.equal(fulfilled.status, 'fulfilled'); assert.equal(fulfilled.serials.length, 2);
     assert.equal((await db.query('SELECT email_status FROM software_orders WHERE id=$1', [checkout.orderId])).rows[0].email_status, 'failed');
     mailFails = false;
     await db.query("UPDATE software_orders SET email_claimed_at=now()-interval '61 seconds' WHERE id=$1", [checkout.orderId]);
-    await store.processSoftwareStoreTransaction(transaction);
+    await store.processSoftwareStoreTransaction(await mayar.getMayarTransaction(transaction.id));
     assert.equal((await db.query('SELECT email_status FROM software_orders WHERE id=$1', [checkout.orderId])).rows[0].email_status, 'sent');
     assert.equal((await db.query('SELECT count(*)::int AS count FROM licenses WHERE order_id=$1',[transaction.id])).rows[0].count, 2);
     console.log('PASS: verified fulfillment, duplicate webhook, failed email then retry without new serials');
     const duplicateId = randomUUID(), duplicateTxn = randomUUID();
     await db.query('INSERT INTO software_payment_attempts(id,order_id,transaction_id,status,expires_at) VALUES ($1,$2,$3,\'pending\',now()+interval \'1 day\')', [duplicateId, checkout.orderId, duplicateTxn]);
     const duplicatePayment = { ...transaction, id: duplicateTxn, extraData: { software_order_id: checkout.orderId, software_attempt_id: duplicateId } };
-    assert.equal(await store.processSoftwareStoreTransaction(duplicatePayment), true);
+    transactions.set(duplicateTxn, duplicatePayment);
+    assert.equal(await store.processSoftwareStoreTransaction(await mayar.getMayarTransaction(duplicateTxn)), true);
     assert.equal((await db.query('SELECT count(*)::int AS count FROM licenses WHERE order_id=$1',[duplicateTxn])).rows[0].count, 0);
     assert.ok((await db.query('SELECT duplicate_payment_notified_at FROM software_orders WHERE id=$1',[checkout.orderId])).rows[0].duplicate_payment_notified_at);
     console.log('PASS: second paid attempt is flagged for review without additional serial allocation');
@@ -176,9 +187,31 @@ try {
     assert.ok(recovered.checkoutUrl); assert.equal(creates, beforeTimeout+1);
     console.log('PASS: committed provider timeout reconciles instead of making a duplicate payment');
 
+    const recheckAccess = token();
+    const recheck = await store.createSoftwareCheckout(buyer, 1, recheckAccess);
+    const recheckPayment = [...payments.values()].find(item => item.extraData.software_order_id === recheck.orderId);
+    const recheckTransaction = transactions.get(recheckPayment.transactionId);
+    recheckTransaction.status = 'paid';
+    const originalMetadata = recheckTransaction.extraData;
+    for (const invalid of ['{broken', '[]', 'null', '123', [], { ...originalMetadata, software_order_id: randomUUID() }, { ...originalMetadata, software_attempt_id: randomUUID() }]) {
+        recheckTransaction.extraData = invalid;
+        await db.query('UPDATE software_orders SET last_verified_at=NULL WHERE id=$1', [recheck.orderId]);
+        await assert.rejects(store.getSoftwareReceipt(recheck.orderId, recheckAccess, true), /payment_verification_failed/);
+        assert.equal((await db.query('SELECT count(*)::int AS count FROM licenses WHERE order_id=$1', [recheckTransaction.id])).rows[0].count, 0);
+    }
+    recheckTransaction.extraData = originalMetadata;
+    await db.query('UPDATE software_orders SET last_verified_at=NULL WHERE id=$1', [recheck.orderId]);
+    const rechecked = await store.getSoftwareReceipt(recheck.orderId, recheckAccess, true);
+    assert.equal(rechecked.status, 'fulfilled'); assert.equal(rechecked.serials.length, 1);
+    const deliveredCount = mails.length;
+    assert.deepEqual((await store.getSoftwareReceipt(recheck.orderId, recheckAccess, true)).serials, rechecked.serials);
+    assert.equal(mails.length, deliveredCount);
+    console.log('PASS: receipt refresh recovers paid order, rejects invalid metadata, and remains idempotent');
+
     createMode = 'bad-redirect';
     await assert.rejects(store.createSoftwareCheckout(buyer, 1, token()), /payment_redirect_unsupported/);
     console.log('PASS: missing provider redirect fails closed');
+    console.log('PASS: service scenarios with provider metadata format:', metadataFormat);
 } catch (error) {
     console.error(error.message, error.stack?.split('\n').slice(1,4).join('\n'));
     process.exitCode = 1;
