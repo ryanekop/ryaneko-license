@@ -34,6 +34,22 @@ test('v2 purchase notification includes committed purchase details and escapes d
     assert.ok(!message.includes('Buyer <b>'));
 });
 
+test('purchase serials are inline for one and numbered for multiple, with escaped HTML', () => {
+    const serials = ['SERIAL<1>', 'SERIAL&2', 'SERIAL"3'];
+    const escaped = ['SERIAL&lt;1&gt;', 'SERIAL&amp;2', 'SERIAL&quot;3'];
+    for (const count of [1, 2, 3]) {
+        const message = softwarePurchaseNotification({
+            id: 'order', customer_name: 'Buyer', customer_email: 'buyer@example.test',
+            customer_mobile: '+628123456789', customer_instagram: 'buyer', os: 'Windows 11',
+            source: 'Website', amount: SOFTWARE_PACKAGES[count - 1].price, license_count: count,
+        }, 'transaction', serials.slice(0, count));
+        const expected = count === 1
+            ? '🔐 Serial number: <code>SERIAL&lt;1&gt;</code>'
+            : ['🔐 Serial number:', ...escaped.slice(0, count).map((serial, index) => `${index + 1}. <code>${serial}</code>`)].join('\n');
+        assert.equal(message.slice(message.indexOf('🔐 Serial number:')), expected);
+    }
+});
+
 test('software packages use canonical pricing and normalized buyer fields', () => {
     for (const selection of SOFTWARE_PACKAGES) {
         const result = validateSoftwareCheckout({ ...customer, amount: 1, price: 1 }, selection.count);

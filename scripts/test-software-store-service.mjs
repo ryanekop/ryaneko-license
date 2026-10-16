@@ -22,6 +22,7 @@ const payments = new Map();
 const transactions = new Map();
 const mails = [];
 const telegramMessages = [];
+const paymentRequests = [];
 let creates = 0;
 let mailFails = false;
 let createMode = 'normal';
@@ -100,6 +101,7 @@ globalThis.fetch = async (input, init = {}) => {
     if (url.pathname.endsWith('/payments/create')) {
         creates++;
         const request = JSON.parse(init.body);
+        paymentRequests.push(request);
         const id = randomUUID(), transactionId = randomUUID();
         const transaction = { id: transactionId, amount: request.amount, status: 'unpaid', customer: { email: request.email }, extraData: request.extraData, expirationDate: Date.parse(request.expiredAt) };
         const payment = { id, transactionId, status: 'active', link: `https://web.mayar.io/pl/test-${id}`, redirectUrl: createMode === 'bad-redirect' ? null : request.redirectUrl, extraData: request.extraData, transactions: [transaction] };
@@ -135,6 +137,8 @@ try {
     const access = token();
     const checkout = await store.createSoftwareCheckout(buyer, 2, access);
     assert.equal(creates, 1);
+    assert.equal(paymentRequests[0].name, buyer.name);
+    assert.ok(paymentRequests[0].description.includes('RAW File Copy Tool; 2 device;'));
     assert.equal((await store.createSoftwareCheckout(buyer, 2, access)).checkoutUrl, checkout.checkoutUrl);
     assert.equal(creates, 1);
     await assert.rejects(store.getSoftwareReceipt(checkout.orderId, token(), false), /invalid_access/);

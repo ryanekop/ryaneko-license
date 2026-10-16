@@ -67,8 +67,9 @@ export function softwarePurchaseNotification(
         `🔢 Jumlah lisensi: ${escape(order.license_count)}`,
         `🧾 Pesanan: ${escape(order.id)}`,
         `🔑 Transaction: ${escape(transactionId)}`,
-        '🔐 Serial number:',
-        ...serials.map(serial => `<code>${escape(serial)}</code>`),
+        ...(serials.length === 1
+            ? [`🔐 Serial number: <code>${escape(serials[0])}</code>`]
+            : ['🔐 Serial number:', ...serials.map((serial, index) => `${index + 1}. <code>${escape(serial)}</code>`)]),
     ].join('\n');
 }
 
@@ -450,7 +451,7 @@ export async function createSoftwareCheckout(customerValue: unknown, countValue:
         try {
             payment = await mayarFetch<MayarPaymentRequest>('/payments/create', {
                 method: 'POST', body: JSON.stringify({
-                    name: `${PRODUCT_NAME} — ${selection.count} device`, amount: selection.amount,
+                    name: selection.customer.name, amount: selection.amount,
                     email: selection.customer.email, mobile: selection.customer.mobile,
                     description: `${PRODUCT_NAME}; ${selection.count} device; ${selection.customer.name}; @${selection.customer.instagram}; ${selection.customer.os}; ${selection.customer.source}`,
                     expiredAt: result.attempt.expires_at, redirectUrl,
