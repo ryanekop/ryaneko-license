@@ -127,23 +127,26 @@ try {
         CREATE TABLE products(id uuid PRIMARY KEY,slug text UNIQUE,name text,download_urls jsonb);
         CREATE TABLE licenses(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),product_id uuid,serial_key text UNIQUE,status text DEFAULT 'available',customer_name text,customer_email text,customer_instagram text,order_id text,batch_info text,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
         CREATE TABLE purchases(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),order_id text UNIQUE,product_id uuid,customer_name text,customer_email text,customer_instagram text,license_count integer,includes_plugin boolean,addons jsonb,raw_payload jsonb,licenses_assigned uuid[],created_at timestamptz DEFAULT now());
-        INSERT INTO products VALUES ('00000000-0000-0000-0000-000000000001','raw-file-copy-tool','RAW File Copy Tool','{"main":"https://example.test/download"}');
+        INSERT INTO products VALUES ('00000000-0000-0000-0000-000000000001','raw-file-copy-tool','RAW File Copy Tool','{"main":"https://example.test/download","Windows":"https://example.test/windows","macOS":"https://example.test/mac"}');
         INSERT INTO licenses(product_id,serial_key) SELECT '00000000-0000-0000-0000-000000000001','SERIAL-'||n FROM generate_series(1,20)n;`);
     await db.exec(await readFile(new URL('../migration/add-software-store.sql', import.meta.url), 'utf8'));
+    await db.exec(await readFile(new URL('../migration/add-software-device-os.sql', import.meta.url), 'utf8'));
     const store = await import('../src/lib/software-store.ts');
     const mayar = await import('../src/lib/mayar-v2.ts');
     const buyer = { name: 'Buyer <Photo> & Friends', email: 'buyer@example.test', mobile: '081234567890', instagram: 'buyer', os: 'Windows 11', source: 'Website' };
     const token = () => randomBytes(32).toString('base64url');
     const access = token();
-    const checkout = await store.createSoftwareCheckout(buyer, 2, access);
+    const mixedBuyer = { ...buyer, deviceOs: [buyer.os, 'Mac OS Tahoe (26.0+)'] };
+    const checkout = await store.createSoftwareCheckout(mixedBuyer, 2, access);
     assert.equal(creates, 1);
     assert.equal(paymentRequests[0].name, buyer.name);
     assert.ok(paymentRequests[0].description.includes('RAW File Copy Tool; 2 device;'));
-    assert.equal((await store.createSoftwareCheckout(buyer, 2, access)).checkoutUrl, checkout.checkoutUrl);
+    assert.equal((await store.createSoftwareCheckout(mixedBuyer, 2, access)).checkoutUrl, checkout.checkoutUrl);
     assert.equal(creates, 1);
     await assert.rejects(store.getSoftwareReceipt(checkout.orderId, token(), false), /invalid_access/);
     const pending = await store.getSoftwareReceipt(checkout.orderId, access, false);
     assert.equal(pending.serials.length, 0);
+    assert.deepEqual(pending.deviceOs, mixedBuyer.deviceOs);
     console.log('PASS: actual service creates and reuses checkout; invalid receipt token denied');
     const payment = [...payments.values()][0];
     const transaction = transactions.get(payment.transactionId);
@@ -152,11 +155,13 @@ try {
     assert.equal(await store.processSoftwareStoreTransaction(await mayar.getMayarTransaction(transaction.id)), true);
     const fulfilled = await store.getSoftwareReceipt(checkout.orderId, access, false);
     assert.equal(fulfilled.status, 'fulfilled'); assert.equal(fulfilled.serials.length, 2);
+    assert.deepEqual(fulfilled.deviceOs, mixedBuyer.deviceOs);
+    assert.deepEqual(fulfilled.downloads.map(item => item.url), ['https://example.test/windows', 'https://example.test/mac']);
     const purchaseMessages = () => telegramMessages.filter(message => message.includes('<b>New Purchase! v2</b>'));
     assert.equal(purchaseMessages().length, 1);
     for (const content of [
         'RAW File Copy Tool', 'Buyer &lt;Photo&gt; &amp; Friends', buyer.email, buyer.mobile,
-        `Instagram: ${buyer.instagram}`, `OS: ${buyer.os}`, `Sumber: ${buyer.source}`,
+        `Instagram: ${buyer.instagram}`, `OS Device 1: ${buyer.os}`, 'OS Device 2: Mac OS Tahoe (26.0+)', `Sumber: ${buyer.source}`,
         'Rp 196.000', 'Jumlah lisensi: 2', checkout.orderId, transaction.id,
         ...fulfilled.serials.map(serial => `<code>${serial}</code>`),
     ]) assert.ok(purchaseMessages()[0].includes(content), content);
@@ -166,6 +171,7 @@ try {
     await db.query("UPDATE software_orders SET email_claimed_at=now()-interval '61 seconds' WHERE id=$1", [checkout.orderId]);
     await store.processSoftwareStoreTransaction(await mayar.getMayarTransaction(transaction.id));
     assert.equal((await db.query('SELECT email_status FROM software_orders WHERE id=$1', [checkout.orderId])).rows[0].email_status, 'sent');
+    assert.ok(mails.at(-1).html.includes(`href="https://ryanekoapp.web.id/after-buy/raw-file-copy-tool#orderId=${checkout.orderId}&amp;token=`), 'multi-platform email download opens all downloads in the receipt');
     assert.equal((await db.query('SELECT count(*)::int AS count FROM licenses WHERE order_id=$1',[transaction.id])).rows[0].count, 2);
     await store.getSoftwareReceipt(checkout.orderId, access, true);
     assert.equal(purchaseMessages().length, 1, 'duplicate webhook/email retry/receipt refresh must not resend purchase notification');
@@ -187,6 +193,7 @@ try {
     const history = await store.getSoftwareHistory(session.sessionToken, 1);
     assert.equal(history.orders.length, 1);
     assert.equal(history.orders[0].serials.length, 0);
+    assert.deepEqual(history.orders[0].deviceOs, mixedBuyer.deviceOs);
     assert.equal((await store.getSoftwareHistoryDetail(session.sessionToken, checkout.orderId)).serials.length, 2);
     await store.requestSoftwareOtp('other@example.test', 'other-ip');
     const otherOtp = mails.at(-1).html.match(/>(\d{6})<\/p>/)[1];

@@ -23,17 +23,17 @@ const PRODUCT_SLUG = 'raw-file-copy-tool';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type SoftwareStatus = 'pending' | 'verifying' | 'fulfilled' | 'expired' | 'awaiting_stock' | 'payment_error';
-export type SoftwareCustomer = { name: string; email: string; mobile: string; instagram: string; os: string; source: string };
+export type SoftwareCustomer = { name: string; email: string; mobile: string; instagram: string; os: string; source: string; deviceOs?: string[] };
 export type SoftwareReceipt = {
     id: string; kind: 'checkout' | 'legacy'; productName: typeof PRODUCT_NAME; createdAt: string;
-    count: number; amount: number | null; status: SoftwareStatus; os: string | null;
+    count: number; amount: number | null; status: SoftwareStatus; os: string | null; deviceOs?: string[] | null;
     serials: string[]; downloads: Array<{ label: string; url: string }>; checkoutUrl?: string | null;
     paymentStatusKnown?: boolean;
 };
 type SoftwareOrder = {
     id: string; product_id: string; access_token_hash: string; email_access_token_hash: string | null;
     access_expires_at: string; customer_name: string; customer_email: string; customer_mobile: string;
-    customer_instagram: string; os: string; source: string; license_count: number; amount: number;
+    customer_instagram: string; os: string; device_os?: string[] | null; source: string; license_count: number; amount: number;
     status: SoftwareStatus; expires_at: string; created_at: string; email_status: string; superseded_at: string | null;
 };
 type PaymentAttempt = {
@@ -49,7 +49,7 @@ type LegacyPurchase = {
 
 export function softwarePurchaseNotification(
     order: Pick<SoftwareOrder, 'id' | 'customer_name' | 'customer_email' | 'customer_mobile' |
-        'customer_instagram' | 'os' | 'source' | 'amount' | 'license_count'>,
+        'customer_instagram' | 'os' | 'device_os' | 'source' | 'amount' | 'license_count'>,
     transactionId: string, serials: string[],
 ) {
     const escape = escapeTelegramHtml;
@@ -61,7 +61,7 @@ export function softwarePurchaseNotification(
         `📧 Email: ${escape(order.customer_email)}`,
         `📱 WhatsApp: ${escape(order.customer_mobile)}`,
         `📸 Instagram: ${escape(order.customer_instagram)}`,
-        `💻 OS: ${escape(order.os)}`,
+        ...(order.device_os?.length ? order.device_os.map((os, index) => `💻 OS Device ${index + 1}: ${escape(os)}`) : [`💻 OS: ${escape(order.os)}`]),
         `🧭 Sumber: ${escape(order.source)}`,
         `💰 Nominal: Rp ${escape(amount)}`,
         `🔢 Jumlah lisensi: ${escape(order.license_count)}`,
@@ -114,6 +114,8 @@ export function validateSoftwareCheckout(customerValue: unknown, countValue: unk
         throw new SoftwareStoreError('invalid_customer');
     }
     const value = customerValue as Record<string, unknown>;
+    const selection = SOFTWARE_PACKAGES.find(item => item.count === countValue);
+    if (!selection) throw new SoftwareStoreError('invalid_package');
     const field = (key: string, max: number) => {
         const text = typeof value[key] === 'string' ? (value[key] as string).trim() : '';
         if (!text || text.length > max || /[\u0000-\u001f\u007f]/.test(text)) throw new SoftwareStoreError('invalid_customer');
@@ -127,8 +129,13 @@ export function validateSoftwareCheckout(customerValue: unknown, countValue: unk
         !SOFTWARE_OS_OPTIONS.includes(customer.os) || !SOFTWARE_SOURCES.includes(customer.source)) {
         throw new SoftwareStoreError('invalid_customer');
     }
-    const selection = SOFTWARE_PACKAGES.find(item => item.count === countValue);
-    if (!selection) throw new SoftwareStoreError('invalid_package');
+    if (value.deviceOs !== undefined) {
+        if (!Array.isArray(value.deviceOs) || value.deviceOs.length !== selection.count ||
+            value.deviceOs.some(os => typeof os !== 'string' || !SOFTWARE_OS_OPTIONS.includes(os)) || value.deviceOs[0] !== customer.os) {
+            throw new SoftwareStoreError('invalid_customer');
+        }
+        customer.deviceOs = [...value.deviceOs];
+    }
     return { customer, count: selection.count, amount: selection.price };
 }
 
@@ -196,7 +203,11 @@ function receiptUrl(orderId: string, token: string) {
     return `${webUrl()}/after-buy/raw-file-copy-tool#${new URLSearchParams({ orderId, token })}`;
 }
 
-export function softwareDownloads(links: Record<string, string> | null, os: string | null) {
+export function softwareDownloads(links: Record<string, string> | null, os: string | null | string[]): Array<{ label: string; url: string }> {
+    if (Array.isArray(os)) {
+        const downloads = os.flatMap(value => softwareDownloads(links, value));
+        return downloads.filter((item, index) => downloads.findIndex(other => other.url === item.url) === index);
+    }
     if (!links) return [];
     const preferred = os === null ? 'main' : os?.startsWith('Windows') ? 'Windows' : os === 'Android' ? 'Android' :
         os?.includes('Monterey') ? 'macOS-Monterey' : 'macOS';
@@ -214,14 +225,14 @@ async function orderReceipt(order: SoftwareOrder, includeDetails = true): Promis
     const payment = payments.find(item => item.status === 'paid') || payments[0];
     const receipt: SoftwareReceipt = {
         id: order.id, kind: 'checkout', productName: PRODUCT_NAME, createdAt: order.created_at,
-        count: order.license_count, amount: order.amount, status: order.status, os: order.os,
+        count: order.license_count, amount: order.amount, status: order.status, os: order.os, deviceOs: order.device_os ?? null,
         serials: [], downloads: [], checkoutUrl: payment?.status === 'pending' ? payment.checkout_url : null,
     };
     if (includeDetails && order.status === 'fulfilled') {
         const { data, error } = await database().from('licenses').select('serial_key').eq('product_id', order.product_id).eq('order_id', payment?.transaction_id || '').eq('customer_email', order.customer_email).order('batch_info');
         if (error) throw new SoftwareStoreError('service_unavailable', 503);
         receipt.serials = (data || []).map(item => String(item.serial_key));
-        receipt.downloads = softwareDownloads((await product()).download_urls, order.os);
+        receipt.downloads = softwareDownloads((await product()).download_urls, order.device_os?.length ? order.device_os : order.os);
     }
     return receipt;
 }
@@ -255,7 +266,7 @@ async function deliverOrder(order: SoftwareOrder) {
     let sent = false;
     try {
         const receipt = await orderReceipt(order);
-        const downloadLinks = Object.fromEntries(receipt.downloads.map(item => ['main', item.url]));
+        const downloadLinks = { main: escapeTelegramHtml(receipt.downloads.length === 1 ? receipt.downloads[0].url : receiptUrl(order.id, token)) };
         const html = getEmailHtml(PRODUCT_SLUG, {
             customerName: escapeTelegramHtml(order.customer_name), serialKeys: receipt.serials.map(escapeTelegramHtml),
             productName: PRODUCT_NAME, downloadLinks, includesPlugin: false,
@@ -453,7 +464,7 @@ export async function createSoftwareCheckout(customerValue: unknown, countValue:
                 method: 'POST', body: JSON.stringify({
                     name: selection.customer.name, amount: selection.amount,
                     email: selection.customer.email, mobile: selection.customer.mobile,
-                    description: `${PRODUCT_NAME}; ${selection.count} device; ${selection.customer.name}; @${selection.customer.instagram}; ${selection.customer.os}; ${selection.customer.source}`,
+                    description: `${PRODUCT_NAME}; ${selection.count} device; ${selection.customer.name}; @${selection.customer.instagram}; ${selection.customer.deviceOs?.map((os, index) => `Device ${index + 1}: ${os}`).join('; ') ?? selection.customer.os}; ${selection.customer.source}`,
                     expiredAt: result.attempt.expires_at, redirectUrl,
                     extraData: { software_order_id: result.order.id, software_attempt_id: result.attempt.id },
                 }),

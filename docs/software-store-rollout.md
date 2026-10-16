@@ -10,6 +10,14 @@ are borne by the seller for this flow.
 
 ## Deployment order
 
+For per-device OS, apply `migration/add-software-device-os.sql` after the base
+store migration, deploy License, then deploy Web. The new `deviceOs` array must
+match the package size; `os` retains its first entry for compatibility. Older
+requests without the array still resume orders whose devices all share that OS.
+Existing orders retain their original OS display; new orders record and display
+each device in the receipt, history, and Telegram notification. Download links
+cover the selected platforms without duplicates. Activation remains cross-OS.
+
 1. Apply `migration/add-software-store.sql` to **Ryan Eko License Supabase**.
    This is also required by the old software webhook's atomic allocator.
    The migration is additive and does not allocate serials or change existing

@@ -67,6 +67,33 @@ test('checkout rejects unsupported packages rather than coercing client values',
     }
 });
 
+test('per-device OS validates exact package size and keeps legacy requests compatible', () => {
+    for (const count of [1, 2, 3]) {
+        const deviceOs = ['Windows 11', 'Mac OS Tahoe (26.0+)', 'Android'].slice(0, count);
+        assert.deepEqual(validateSoftwareCheckout({ ...customer, deviceOs }, count).customer.deviceOs, deviceOs);
+        assert.deepEqual(validateSoftwareCheckout({ ...customer, deviceOs: Array(count).fill(customer.os) }, count).customer.deviceOs, Array(count).fill(customer.os));
+        assert.equal(validateSoftwareCheckout(customer, count).customer.deviceOs, undefined);
+    }
+    for (const deviceOs of [null, 'Windows 11', [], ['Windows 11'], ['Windows 11', ''], ['Windows 11', 'Linux'], ['Android', 'Windows 11'], ['Windows 11', 1]]) {
+        assert.throws(() => validateSoftwareCheckout({ ...customer, deviceOs }, 2), /invalid_customer/);
+    }
+});
+
+test('Telegram lists every device OS including repeats and escapes HTML', () => {
+    const order = { id: 'order', customer_name: 'Buyer', customer_email: 'buyer@example.test', customer_mobile: '081234567890', customer_instagram: 'buyer', os: 'Windows 11', source: 'Website', amount: 278000, license_count: 3 };
+    const message = softwarePurchaseNotification({ ...order, device_os: ['Windows <11>', 'Mac OS & Tahoe', 'Windows <11>'] }, 'txn', ['one', 'two', 'three']);
+    assert.ok(message.includes('💻 OS Device 1: Windows &lt;11&gt;\n💻 OS Device 2: Mac OS &amp; Tahoe\n💻 OS Device 3: Windows &lt;11&gt;'));
+    assert.ok(softwarePurchaseNotification(order, 'txn', []).includes('💻 OS: Windows 11'));
+});
+
+test('mixed OS downloads include each platform and deduplicate shared URLs', () => {
+    const links = { Windows: 'https://example.test/windows', macOS: 'https://example.test/mac', main: 'https://example.test/all' };
+    assert.deepEqual(softwareDownloads(links, ['Windows 11', 'Mac OS Tahoe (26.0+)', 'Windows 10']), [
+        { label: 'Windows', url: links.Windows }, { label: 'macOS', url: links.macOS },
+    ]);
+    assert.equal(softwareDownloads({ main: links.main }, ['Windows 11', 'Android']).length, 1);
+});
+
 test('checkout accepts catalog OS/source choices and rejects malformed required fields', () => {
     for (const os of SOFTWARE_OS_OPTIONS) assert.equal(validateSoftwareCheckout({ ...customer, os }, 1).customer.os, os);
     for (const source of SOFTWARE_SOURCES) assert.equal(validateSoftwareCheckout({ ...customer, source }, 1).customer.source, source);

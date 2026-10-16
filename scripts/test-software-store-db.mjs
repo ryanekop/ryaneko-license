@@ -29,6 +29,9 @@ try {
     const migration = await readFile(new URL('../migration/add-software-store.sql', import.meta.url), 'utf8');
     await db.exec(migration);
     await db.exec(migration); // Deployment reruns are safe.
+    const deviceMigration = await readFile(new URL('../migration/add-software-device-os.sql', import.meta.url), 'utf8');
+    await db.exec(deviceMigration);
+    await db.exec(deviceMigration);
     const customer = { name: 'Buyer', email: 'buyer@example.test', mobile: '+628123456789', instagram: 'buyer', os: 'Windows 11', source: 'Website' };
     const checkout = async (token, count = 2, buyer = customer) => (await db.query(
         'SELECT begin_software_checkout($1, $2::jsonb, $3, $4, now() + interval \'24 hours\') AS result',
@@ -39,6 +42,18 @@ try {
     assert.equal(repeated.order.id, one.order.id);
     assert.equal(repeated.attempt.id, one.attempt.id);
     assert.equal(repeated.created, false);
+    assert.equal((await checkout('a', 2, { ...customer, deviceOs: [customer.os, customer.os] })).order.id, one.order.id);
+    const mixed = { ...customer, deviceOs: [customer.os, 'Android'] };
+    const perDevice = await checkout('e', 2, mixed);
+    assert.deepEqual(perDevice.order.device_os, mixed.deviceOs);
+    assert.equal((await checkout('e', 2, mixed)).order.id, perDevice.order.id);
+    await assert.rejects(checkout('e', 2, { ...mixed, deviceOs: [customer.os, 'Windows 10'] }), /selection changed/);
+    await assert.rejects(checkout('e', 2), /selection changed/);
+    for (const deviceOs of [null, [], [customer.os], [customer.os, ''], ['Android', 'Android']]) {
+        await assert.rejects(checkout('f', 2, { ...customer, deviceOs }), /Invalid device OS/);
+    }
+    await db.query('DELETE FROM software_payment_attempts WHERE order_id=$1', [perDevice.order.id]);
+    await db.query('DELETE FROM software_orders WHERE id=$1', [perDevice.order.id]);
     await assert.rejects(checkout('a', 3), /selection changed/);
     assert.equal((await db.query('SELECT count(*)::int AS count FROM licenses WHERE order_id IS NOT NULL')).rows[0].count, 0);
     console.log('PASS: checkout idempotency, changed selection rejection, no prepayment allocation');
