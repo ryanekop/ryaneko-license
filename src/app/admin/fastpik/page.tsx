@@ -7,6 +7,7 @@ import { Pagination } from '@/components/Pagination';
 import { DEFAULT_PAGE_SIZE, type PageSize, type PaginationMeta } from '@/lib/pagination';
 import { AdminToast } from '@/components/AdminToast';
 import { FastpikMaintenancePanel } from '@/components/ClientDeskMaintenancePanel';
+import { FastpikBlocklistPanel } from '@/components/FastpikBlocklistPanel';
 import { ProductSubnav, ProductSubnavIcons, type ProductSubnavKey } from '@/components/ProductSubnav';
 import { useLang } from '@/lib/providers';
 
@@ -37,7 +38,7 @@ interface TenantData {
 
 type SortMode = 'newest' | 'oldest' | 'expiresSoon' | 'expiresLatest';
 type ExpiryFilter = 'all' | 'expired' | 'active';
-type FastpikTab = 'users' | 'maintenance';
+type FastpikTab = 'users' | 'blocklist' | 'maintenance';
 
 const EDITABLE_TIERS = ['free', 'pro_monthly', 'pro_quarterly', 'pro_yearly', 'lifetime'];
 
@@ -174,7 +175,7 @@ export default function FastpikPage() {
     useEffect(() => {
         const syncTabFromUrl = () => {
             const tab = new URLSearchParams(window.location.search).get('tab');
-            setActiveTab(tab === 'maintenance' ? 'maintenance' : 'users');
+            setActiveTab(tab === 'maintenance' || tab === 'blocklist' ? tab : 'users');
         };
 
         syncTabFromUrl();
@@ -187,7 +188,7 @@ export default function FastpikPage() {
             router.push('/admin/fastpik/vendor');
             return;
         }
-        if (tab !== 'users' && tab !== 'maintenance') return;
+        if (tab !== 'users' && tab !== 'blocklist' && tab !== 'maintenance') return;
 
         setActiveTab(tab);
         router.push(tab === 'users' ? '/admin/fastpik' : `/admin/fastpik?tab=${tab}`, { scroll: false });
@@ -435,6 +436,7 @@ export default function FastpikPage() {
                 ariaLabel="Fastpik navigation"
                 items={[
                     { key: 'users', label: 'Users', icon: ProductSubnavIcons.users },
+                    { key: 'blocklist', label: 'Blocklist', icon: ProductSubnavIcons.blocklist },
                     { key: 'maintenance', label: 'Maintenance', icon: ProductSubnavIcons.maintenance },
                     { key: 'vendor', label: 'Vendor', icon: ProductSubnavIcons.vendor },
                 ]}
@@ -876,6 +878,8 @@ export default function FastpikPage() {
                 </div>
             </Dialog>
                 </>
+            ) : activeTab === 'blocklist' ? (
+                <FastpikBlocklistPanel />
             ) : (
                 <FastpikMaintenancePanel />
             )}

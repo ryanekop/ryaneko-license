@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import { getFastpikSupabase } from '@/lib/fastpik-supabase';
 import { escapeTelegramHtml, notifyAlert, notifyInfo } from '@/lib/telegram';
 import { createPagination, parseListParams } from '@/lib/pagination';
+import { findActiveFastpikBlock, isValidBlocklistEmail, normalizeBlocklistEmail } from '@/lib/fastpik-blocklist';
 
 // Direct connection to Fastpik Supabase (bypasses Vercel Attack Challenge)
 const fastpikSupabase = getFastpikSupabase();
@@ -231,11 +232,19 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, message: 'Name and email are required' }, { status: 400 });
         }
 
+        const normalizedEmail = normalizeBlocklistEmail(email);
+        if (!isValidBlocklistEmail(normalizedEmail)) {
+            return NextResponse.json({ success: false, message: 'A valid email is required' }, { status: 400 });
+        }
+        if (await findActiveFastpikBlock(fastpikSupabase, normalizedEmail)) {
+            return NextResponse.json({ success: false, code: 'account_blocked', message: 'This Fastpik account is currently unavailable.' }, { status: 403 });
+        }
+
         const parsedTrialDays = Number.parseInt(String(trialDays), 10);
         const normalizedTrialDays = Number.isFinite(parsedTrialDays) && parsedTrialDays > 0 ? parsedTrialDays : ADMIN_TRIAL_DAYS;
 
         // Invite user by email
-        const { data: authData, error: authError } = await fastpikSupabase.auth.admin.inviteUserByEmail(email, {
+        const { data: authData, error: authError } = await fastpikSupabase.auth.admin.inviteUserByEmail(normalizedEmail, {
             data: { full_name: name },
             redirectTo: 'https://fastpik.id/id/auth/callback?next=/id/dashboard',
         });
@@ -263,7 +272,7 @@ export async function POST(request: NextRequest) {
         // Create profile
         const { error: profileError } = await fastpikSupabase.from('profiles').insert({
             id: authData.user.id,
-            email,
+            email: normalizedEmail,
             full_name: name,
         });
         if (profileError) {
